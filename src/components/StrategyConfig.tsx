@@ -35,6 +35,9 @@ const migrateOldConfig = (oldConfig: any): StrategyConfigType => {
         positionSizing: {
           ...defaultConfig.positionSizing,
           balancePercentage: oldConfig.orderSizeUsd ? 50 : defaultConfig.positionSizing.balancePercentage,
+          // Initialize new fields with balancePercentage for backward compatibility
+          baseBalancePercentage: defaultConfig.positionSizing.baseBalancePercentage ?? defaultConfig.positionSizing.balancePercentage,
+          quoteBalancePercentage: defaultConfig.positionSizing.quoteBalancePercentage ?? defaultConfig.positionSizing.balancePercentage,
         },
         timing: {
           ...defaultConfig.timing,
@@ -333,7 +336,7 @@ export default function StrategyConfig({ markets }: StrategyConfigProps) {
                             <span className="summary-value">
                               {config.config.positionSizing?.sizeMode === 'fixedUsd' 
                                 ? `$${config.config.positionSizing.fixedUsdAmount || 0}`
-                                : `${config.config.positionSizing?.balancePercentage || 0}%`
+                                : `Base: ${config.config.positionSizing?.baseBalancePercentage ?? config.config.positionSizing?.balancePercentage ?? 0}%, Quote: ${config.config.positionSizing?.quoteBalancePercentage ?? config.config.positionSizing?.balancePercentage ?? 0}%`
                               }
                             </span>
                           </span>
@@ -475,18 +478,20 @@ function StrategyConfigForm({
           <div className="section-content">
         <div className="form-group">
               <label>Market *</label>
-          <select
-            value={selectedMarket}
-                onChange={(e) => onMarketChange(e.target.value)}
-                required
-          >
-            <option value="">Select a market</option>
-            {markets.map((market) => (
-              <option key={market.market_id} value={market.market_id}>
-                {market.base.symbol}/{market.quote.symbol}
-              </option>
-            ))}
-          </select>
+          <div className="select-wrapper">
+            <select
+              value={selectedMarket}
+              onChange={(e) => onMarketChange(e.target.value)}
+              required
+            >
+              <option value="">Select a market</option>
+              {markets.map((market) => (
+                <option key={market.market_id} value={market.market_id}>
+                  {market.base.symbol}/{market.quote.symbol}
+                </option>
+              ))}
+            </select>
+          </div>
             </div>
             <div className="form-group">
               <label>Strategy Name (optional)</label>
@@ -510,26 +515,30 @@ function StrategyConfigForm({
           <div className="section-content">
             <div className="form-group">
               <label>Order Type *</label>
-              <select
-                value={config.orderConfig.orderType}
-                onChange={(e) => updateOrderConfig({ orderType: e.target.value as any })}
-              >
-                <option value="Market">Market</option>
-                <option value="Spot">Spot</option>
-              </select>
+              <div className="select-wrapper">
+                <select
+                  value={config.orderConfig.orderType}
+                  onChange={(e) => updateOrderConfig({ orderType: e.target.value as any })}
+                >
+                  <option value="Market">Market</option>
+                  <option value="Spot">Spot</option>
+                </select>
+              </div>
               <small>Market: Executes immediately at the best available price. Spot: Executes immediately, similar to Market but with different contract-level handling.</small>
             </div>
             <div className="form-group">
               <label>Price Mode *</label>
-              <select
-                value={config.orderConfig.priceMode}
-                onChange={(e) => updateOrderConfig({ priceMode: e.target.value as any })}
-              >
-                <option value="offsetFromMid">Offset from Mid Price</option>
-                <option value="offsetFromBestBid">Offset from Best Bid</option>
-                <option value="offsetFromBestAsk">Offset from Best Ask</option>
-                <option value="market">Market Price</option>
-              </select>
+              <div className="select-wrapper">
+                <select
+                  value={config.orderConfig.priceMode}
+                  onChange={(e) => updateOrderConfig({ priceMode: e.target.value as any })}
+                >
+                  <option value="offsetFromMid">Offset from Mid Price</option>
+                  <option value="offsetFromBestBid">Offset from Best Bid</option>
+                  <option value="offsetFromBestAsk">Offset from Best Ask</option>
+                  <option value="market">Market Price</option>
+                </select>
+              </div>
             </div>
             <div className="form-group">
               <label>Price Offset (%) *</label>
@@ -630,53 +639,28 @@ function StrategyConfigForm({
             {config.positionSizing.sizeMode === 'percentageOfBalance' && (
               <>
                 <div className="form-group">
-                  <label>Balance Percentage (%) *</label>
+                  <label>Base Balance Percentage (%) *</label>
                   <input
                     type="number"
                     min="0"
                     max="100"
                     step="1"
-                    value={config.positionSizing.balancePercentage}
-                    onChange={(e) => updatePositionSizing({ balancePercentage: parseFloat(e.target.value) || 0 })}
+                    value={config.positionSizing.baseBalancePercentage ?? config.positionSizing.balancePercentage}
+                    onChange={(e) => updatePositionSizing({ baseBalancePercentage: parseFloat(e.target.value) || 0 })}
                   />
+                  <small className="form-hint">Percentage of base balance to use for sell orders</small>
                 </div>
                 <div className="form-group">
-                  <label>Balance Type *</label>
-                  <div className="radio-group">
-                    <label className="radio-option">
-                      <input
-                        type="radio"
-                        name="balanceType"
-                        value="base"
-                        checked={config.positionSizing.balanceType === 'base'}
-                        onChange={(e) => updatePositionSizing({ balanceType: e.target.value as any })}
-                      />
-                      <span className="radio-custom"></span>
-                      <span className="radio-label">Base Asset</span>
-                    </label>
-                    <label className="radio-option">
-                      <input
-                        type="radio"
-                        name="balanceType"
-                        value="quote"
-                        checked={config.positionSizing.balanceType === 'quote'}
-                        onChange={(e) => updatePositionSizing({ balanceType: e.target.value as any })}
-                      />
-                      <span className="radio-custom"></span>
-                      <span className="radio-label">Quote Asset</span>
-                    </label>
-                    <label className="radio-option">
-                      <input
-                        type="radio"
-                        name="balanceType"
-                        value="both"
-                        checked={config.positionSizing.balanceType === 'both'}
-                        onChange={(e) => updatePositionSizing({ balanceType: e.target.value as any })}
-                      />
-                      <span className="radio-custom"></span>
-                      <span className="radio-label">Both</span>
-                    </label>
-                  </div>
+                  <label>Quote Balance Percentage (%) *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={config.positionSizing.quoteBalancePercentage ?? config.positionSizing.balancePercentage}
+                    onChange={(e) => updatePositionSizing({ quoteBalancePercentage: parseFloat(e.target.value) || 0 })}
+                  />
+                  <small className="form-hint">Percentage of quote balance to use for buy orders</small>
                 </div>
               </>
             )}
@@ -701,6 +685,17 @@ function StrategyConfigForm({
                 value={config.positionSizing.minOrderSizeUsd}
                 onChange={(e) => updatePositionSizing({ minOrderSizeUsd: parseFloat(e.target.value) || 5 })}
               />
+            </div>
+            <div className="form-group">
+              <label>Max Order Size (USD)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={config.positionSizing.maxOrderSizeUsd || ''}
+                onChange={(e) => updatePositionSizing({ maxOrderSizeUsd: e.target.value ? parseFloat(e.target.value) : undefined })}
+              />
+              <small className="form-hint">Optional: Cap order size at this USD value (leave empty for no limit)</small>
             </div>
           </div>
         )}
@@ -788,16 +783,6 @@ function StrategyConfigForm({
                 step="100"
                 value={config.timing.cycleIntervalMaxMs}
                 onChange={(e) => updateTiming({ cycleIntervalMaxMs: parseInt(e.target.value) || 5000 })}
-              />
-            </div>
-            <div className="form-group">
-              <label>Cooldown After Fill (ms)</label>
-              <input
-                type="number"
-                min="0"
-                step="100"
-                value={config.timing.cooldownAfterFillMs || 0}
-                onChange={(e) => updateTiming({ cooldownAfterFillMs: parseInt(e.target.value) || undefined })}
               />
             </div>
           </div>

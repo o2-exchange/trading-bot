@@ -19,6 +19,7 @@ import CompetitionPanel from './CompetitionPanel'
 import { balanceService } from '../services/balanceService'
 import { TradingAccountBalances } from '../types/tradingAccount'
 import { filterMarkets } from '../utils/marketFilters'
+import { db } from '../services/dbService'
 import './Dashboard.css'
 
 interface DashboardProps {
@@ -34,6 +35,7 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
   const [markets, setMarkets] = useState<any[]>([])
   const [balances, setBalances] = useState<TradingAccountBalances | null>(null)
   const [balancesLoading, setBalancesLoading] = useState(false)
+  const [showStrategyRecommendation, setShowStrategyRecommendation] = useState(false)
   const { addToast } = useToast()
 
   // Fetch data when auth flow is ready (no duplicate initialization)
@@ -111,6 +113,42 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     return unsubscribe
   }, [])
 
+  // Check for active strategies to show recommendation banner
+  useEffect(() => {
+    const checkStrategies = async () => {
+      if (isTrading) {
+        setShowStrategyRecommendation(false)
+        return
+      }
+
+      const allConfigs = await db.strategyConfigs.toArray()
+      const activeConfigs = allConfigs.filter((config) => config.isActive === true)
+      setShowStrategyRecommendation(activeConfigs.length === 0)
+    }
+
+    checkStrategies()
+
+    // Check periodically when not trading (every 2 seconds)
+    const interval = setInterval(() => {
+      if (!isTrading) {
+        checkStrategies()
+      }
+    }, 2000)
+
+    // Also check when window regains focus
+    const handleFocus = () => {
+      if (!isTrading) {
+        checkStrategies()
+      }
+    }
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [isTrading])
+
   // Subscribe to trading engine status updates when trading is active
   useEffect(() => {
     if (!isTrading) return
@@ -125,6 +163,31 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     return unsubscribe
   }, [isTrading, addToast])
 
+  // Subscribe to trade completion for balance updates
+  useEffect(() => {
+    if (!isTrading || !tradingAccount || !markets.length || !walletAddress) return
+
+    const refreshBalances = async () => {
+      // Silently update balances without showing loading state
+      try {
+        const accountBalances = await balanceService.getAllBalances(
+          markets,
+          tradingAccount.id,
+          walletAddress
+        )
+        setBalances(accountBalances)
+      } catch (error) {
+        console.error('Failed to refresh balances after trade', error)
+      }
+    }
+
+    const unsubscribe = tradingEngine.onTradeComplete(() => {
+      refreshBalances()
+    })
+
+    return unsubscribe
+  }, [isTrading, tradingAccount, markets, walletAddress])
+
   const handleStartTrading = async () => {
     if (!walletAddress || !tradingAccount) {
       addToast('Wallet or trading account not available', 'error')
@@ -137,6 +200,15 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     const session = await sessionService.getActiveSession(normalizedAddress)
     if (!session) {
       addToast('Session not ready. Please complete authentication.', 'error')
+      return
+    }
+
+    // Check for active strategies
+    const allConfigs = await db.strategyConfigs.toArray()
+    const activeConfigs = allConfigs.filter((config) => config.isActive === true)
+
+    if (activeConfigs.length === 0) {
+      addToast('Please create and activate a strategy in the Strategy Configuration section first.', 'error')
       return
     }
 
@@ -207,6 +279,13 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
                   
                   <div className="trading-controls">
                     <h2>Trading Controls</h2>
+                    {showStrategyRecommendation && (
+                      <div className="strategy-recommendation-banner">
+                        <span className="recommendation-text">
+                          No active strategy configured. Please create and activate a strategy in the Strategy Configuration section below before starting trading.
+                        </span>
+                      </div>
+                    )}
                     {!isTrading ? (
                       <button onClick={handleStartTrading} className="start-button">
                         Start Trading

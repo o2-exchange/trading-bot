@@ -185,6 +185,29 @@
   color: var(--foreground);
 }
 
+.strategy-recommendation-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--warning-background, rgba(255, 193, 7, 0.1));
+  border: 1px solid var(--warning-border, rgba(255, 193, 7, 0.3));
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--warning-foreground, #856404);
+}
+
+.recommendation-icon {
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.recommendation-text {
+  flex: 1;
+  line-height: 1.5;
+}
+
 .trading-status-indicator {
   display: flex;
   align-items: center;

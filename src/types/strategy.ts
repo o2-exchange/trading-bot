@@ -26,15 +26,17 @@ export interface PositionSizingConfig {
   sizeMode: 'percentageOfBalance' | 'fixedUsd'
   
   // Percentage-based (most common)
-  balancePercentage: number // % of available balance to use (0-100)
-  balanceType: 'base' | 'quote' | 'both' // Which balance(s) to use
+  balancePercentage: number // % of available balance to use (0-100) - DEPRECATED, use baseBalancePercentage/quoteBalancePercentage instead
+  baseBalancePercentage: number // % of base balance to use for sell orders (0-100)
+  quoteBalancePercentage: number // % of quote balance to use for buy orders (0-100)
+  balanceType: 'base' | 'quote' | 'both' // DEPRECATED - kept for backward compatibility only
   
   // Fixed USD (alternative)
   fixedUsdAmount?: number // Fixed USD value per order
   
   // Constraints
   minOrderSizeUsd: number // Minimum order size (e.g., 5 USD)
-  maxOrderSizeUsd?: number // Maximum order size per order
+  maxOrderSizeUsd?: number // Maximum order size per order (optional cap)
 }
 
 // ============================================
@@ -68,9 +70,6 @@ export interface TimingConfig {
   // Execution Interval
   cycleIntervalMinMs: number // Minimum time between order cycles (ms)
   cycleIntervalMaxMs: number // Maximum time between order cycles (ms)
-  
-  // Cooldown
-  cooldownAfterFillMs?: number // Wait time after an order fills (ms)
 }
 
 // ============================================
@@ -141,9 +140,12 @@ export function getDefaultStrategyConfig(marketId: string): StrategyConfig {
     
     positionSizing: {
       sizeMode: 'percentageOfBalance',
-      balancePercentage: 100, // Use 100% of available balance
-      balanceType: 'both', // Use both base and quote balances
+      balancePercentage: 100, // DEPRECATED - kept for backward compatibility
+      baseBalancePercentage: 100, // Use 100% of base balance for sell orders
+      quoteBalancePercentage: 100, // Use 100% of quote balance for buy orders
+      balanceType: 'both', // DEPRECATED - kept for backward compatibility
       minOrderSizeUsd: 5, // Minimum $5 per order
+      maxOrderSizeUsd: undefined, // No maximum cap by default
     },
     
     orderManagement: {
@@ -160,7 +162,6 @@ export function getDefaultStrategyConfig(marketId: string): StrategyConfig {
     timing: {
       cycleIntervalMinMs: 3000, // 3 seconds minimum
       cycleIntervalMaxMs: 5000, // 5 seconds maximum
-      cooldownAfterFillMs: 1000, // 1 second cooldown after fill
     },
     
     isActive: true,
@@ -186,13 +187,4 @@ export interface StrategyExecutionResult {
   executed: boolean
   orders: OrderExecution[]
   nextRunAt?: number
-}
-
-// Legacy types for backward compatibility during migration
-export type StrategyType = 'marketMaking' | 'balanceThreshold'
-
-export interface BaseStrategy {
-  execute(market: Market, config: StrategyConfig, ownerAddress: string, tradingAccountId: string): Promise<StrategyExecutionResult>
-  getName(): string
-  getDescription(): string
 }

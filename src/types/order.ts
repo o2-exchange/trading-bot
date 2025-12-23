@@ -26,6 +26,7 @@ export interface Order {
   side: OrderSide
   order_type: OrderType
   price: string
+  price_fill?: string // Actual execution price (weighted average of all fills)
   quantity: string
   filled_quantity: string
   remaining_quantity: string

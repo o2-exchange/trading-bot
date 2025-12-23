@@ -39,10 +39,19 @@ class OrderFulfillmentService {
       // Order was filled (new fill or partial fill)
       const fillQuantity = currentFilled.minus(previousFilled)
       
-      // Convert order.price from scaled format to human-readable format
-      // order.price is in scaled format (e.g., "1000000000" for $1000 with 6 decimals)
-      // We need to convert it to human-readable format (e.g., "1000")
-      const fillPriceScaled = new Decimal(order.price)
+      // Use actual fill price (price_fill) if available, otherwise fallback to order price
+      // price_fill is the weighted average execution price across all fills
+      // order.price is the limit price (may not match actual execution price)
+      let fillPriceScaled: Decimal
+      if (order.price_fill && order.price_fill !== '0' && order.price_fill !== '') {
+        fillPriceScaled = new Decimal(order.price_fill)
+      } else {
+        // Fallback to order price if price_fill not available
+        fillPriceScaled = new Decimal(order.price)
+      }
+      
+      // Convert from scaled format to human-readable format
+      // Price is in scaled format (e.g., "1000000000" for $1000 with 6 decimals)
       const fillPriceHuman = fillPriceScaled.div(10 ** market.quote.decimals).toString()
       
       // Also convert quantity from scaled to human-readable format
@@ -50,7 +59,7 @@ class OrderFulfillmentService {
       const fillQuantityHuman = fillQuantityScaled.div(10 ** market.base.decimals).toString()
       
       const fillEntry: FillPrice = {
-        price: fillPriceHuman, // Store in human-readable format
+        price: fillPriceHuman, // Store in human-readable format (actual execution price)
         quantity: fillQuantityHuman, // Store in human-readable format
         timestamp: Date.now(),
       }
@@ -211,12 +220,17 @@ class OrderFulfillmentService {
 
   /**
    * Get fill price from order
-   * Checks price_fill field if available, otherwise uses order price
+   * Uses price_fill (actual execution price) if available, otherwise falls back to order price
    */
-  getFillPrice(order: Order): string {
-    // Note: The Order type doesn't have price_fill field yet, but we'll use price for now
-    // If price_fill becomes available in the API, we can add it to the Order type
-    return order.price
+  getFillPrice(order: Order, market: Market): string {
+    // Use price_fill (actual execution price) if available
+    if (order.price_fill && order.price_fill !== '0' && order.price_fill !== '') {
+      const fillPriceScaled = new Decimal(order.price_fill)
+      return fillPriceScaled.div(10 ** market.quote.decimals).toString()
+    }
+    // Fallback to order price (limit price) if price_fill not available
+    const priceScaled = new Decimal(order.price)
+    return priceScaled.div(10 ** market.quote.decimals).toString()
   }
 }
 

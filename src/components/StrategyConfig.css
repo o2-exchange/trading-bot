@@ -335,16 +335,20 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 14px 18px;
   background: var(--muted);
   cursor: pointer;
   user-select: none;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
 }
 
 .section-header:hover {
   background: var(--muted);
   filter: brightness(0.95);
+}
+
+.section-header:active {
+  filter: brightness(0.9);
 }
 
 .section-header h3 {
@@ -355,22 +359,32 @@
 }
 
 .section-toggle {
-  font-size: 18px;
-  font-weight: bold;
+  font-size: 20px;
+  font-weight: 600;
   color: var(--muted-foreground);
+  transition: transform 0.2s ease, color 0.2s ease;
+  line-height: 1;
+}
+
+.section-header:hover .section-toggle {
+  color: var(--foreground);
 }
 
 .section-content {
-  padding: 16px;
+  padding: 20px;
   background: var(--card);
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .form-group:last-child {
   margin-bottom: 0;
+}
+
+.form-group label {
+  margin-bottom: 8px;
 }
 
 .form-group .checkbox-option {
@@ -385,9 +399,39 @@
   font-size: 13px;
 }
 
+/* Custom Select Wrapper */
+.select-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.select-wrapper::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--muted-foreground);
+  pointer-events: none;
+  transition: transform 0.2s ease, border-top-color 0.2s ease;
+  z-index: 1;
+}
+
+.select-wrapper:has(select:focus)::after,
+.select-wrapper:has(select:hover)::after {
+  border-top-color: var(--primary);
+}
+
+.select-wrapper:has(select:focus)::after {
+  transform: translateY(-50%) rotate(180deg);
+}
+
 .form-group input[type="text"],
-.form-group input[type="number"],
-.form-group select {
+.form-group input[type="number"] {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--border);
@@ -395,14 +439,76 @@
   background: var(--background);
   color: var(--foreground);
   font-size: 13px;
-  transition: border-color 0.2s;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.form-group input[type="text"]:hover,
+.form-group input[type="number"]:hover {
+  border-color: var(--muted-foreground);
 }
 
 .form-group input[type="text"]:focus,
-.form-group input[type="number"]:focus,
+.form-group input[type="number"]:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.form-group input[type="text"]:disabled,
+.form-group input[type="number"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--muted);
+}
+
+/* Custom Select Styling */
+.form-group select {
+  width: 100%;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 13px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+}
+
+.form-group select:hover {
+  border-color: var(--muted-foreground);
+}
+
 .form-group select:focus {
   outline: none;
   border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.form-group select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--muted);
+  border-color: var(--border);
+}
+
+.form-group select:disabled:hover {
+  border-color: var(--border);
+}
+
+.select-wrapper:has(select:disabled)::after {
+  opacity: 0.5;
+  border-top-color: var(--muted-foreground);
+}
+
+.form-group select option {
+  background: var(--background);
+  color: var(--foreground);
+  padding: 8px;
 }
 
 .form-group small {
@@ -410,22 +516,43 @@
   margin-top: 4px;
   color: var(--muted-foreground);
   font-size: 11px;
+  line-height: 1.4;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 400;
 }
 
 .radio-group {
   display: flex;
+  align-items: center;
   gap: 16px;
   flex-wrap: wrap;
+  margin-top: 4px;
+  line-height: 1;
 }
 
-/* Custom Radio Buttons - Following o2 UI Guidelines */
+/* Custom Radio Buttons - Enhanced Styling */
 .radio-option {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
   font-weight: normal;
   position: relative;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.radio-option:hover {
+  background: var(--muted);
 }
 
 .radio-option input[type="radio"] {
@@ -437,24 +564,35 @@
 }
 
 .radio-custom {
-  width: 16px;
-  height: 16px;
-  border: 1px solid var(--sidebar-border);
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+  max-width: 14px;
+  max-height: 14px;
+  border: 1.5px solid var(--sidebar-border);
   border-radius: 50%;
   background: var(--input);
   position: relative;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   flex-shrink: 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  display: inline-block;
+  box-sizing: border-box;
+  vertical-align: middle;
+  margin: 0;
+  align-self: center;
 }
 
 .radio-option:hover .radio-custom {
   border-color: var(--muted-foreground);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
 }
 
 .radio-option input[type="radio"]:checked ~ .radio-custom {
   border-color: var(--primary);
   background: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
 }
 
 .radio-option input[type="radio"]:checked ~ .radio-custom::after {
@@ -463,41 +601,75 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
+  min-width: 4px;
+  min-height: 4px;
   border-radius: 50%;
   background: var(--primary-foreground);
+  display: block;
+  box-sizing: border-box;
+}
+
+.radio-option input[type="radio"]:disabled {
+  cursor: not-allowed;
 }
 
 .radio-option input[type="radio"]:disabled ~ .radio-custom {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
+  border-color: var(--border);
+  background: var(--muted);
+  box-shadow: none;
 }
 
 .radio-option input[type="radio"]:disabled ~ .radio-label {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
+}
+
+.radio-option:has(input[type="radio"]:disabled):hover {
+  background: transparent;
 }
 
 .radio-label {
   color: var(--foreground);
   font-size: 13px;
   user-select: none;
+  font-weight: 500;
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  margin-left: 4px;
 }
 
-/* Custom Checkboxes - Following o2 UI Guidelines */
+/* Custom Checkboxes - Enhanced Styling */
 .checkbox-option {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 0;
   cursor: pointer;
   font-weight: normal;
   position: relative;
+  padding: 0;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+  margin-bottom: 0;
+}
+
+.checkbox-option:hover:not(.disabled) {
+  background: transparent;
 }
 
 .checkbox-option.disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
+}
+
+.checkbox-option.disabled:hover {
+  background: transparent;
 }
 
 .checkbox-option input[type="checkbox"] {
@@ -511,22 +683,33 @@
 .checkbox-custom {
   width: 16px;
   height: 16px;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 2px;
+  min-width: 16px;
+  min-height: 16px;
+  max-width: 16px;
+  max-height: 16px;
+  border: 1.5px solid var(--sidebar-border);
+  border-radius: 3px;
   background: var(--input);
   position: relative;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   flex-shrink: 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  display: inline-block;
+  box-sizing: border-box;
+  align-self: flex-start;
+  margin-top: 6px;
+  margin-right: 5px;
 }
 
 .checkbox-option:hover:not(.disabled) .checkbox-custom {
   border-color: var(--muted-foreground);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
 }
 
 .checkbox-option input[type="checkbox"]:checked ~ .checkbox-custom {
   border-color: var(--primary);
   background: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
 }
 
 .checkbox-option input[type="checkbox"]:checked ~ .checkbox-custom::after {
@@ -537,17 +720,25 @@
   width: 4px;
   height: 8px;
   border: solid var(--primary-foreground);
-  border-width: 0 1.5px 1.5px 0;
+  border-width: 0 2px 2px 0;
   transform: rotate(45deg);
+  box-sizing: border-box;
 }
 
-.checkbox-option input[type="checkbox"]:disabled ~ .checkbox-custom {
-  opacity: 0.5;
+.checkbox-option input[type="checkbox"]:disabled {
   cursor: not-allowed;
 }
 
+.checkbox-option input[type="checkbox"]:disabled ~ .checkbox-custom {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-color: var(--border);
+  background: var(--muted);
+  box-shadow: none;
+}
+
 .checkbox-option input[type="checkbox"]:disabled ~ .checkbox-label {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
@@ -557,6 +748,11 @@
   user-select: none;
   flex: 1;
   line-height: 1.4;
+  font-weight: 500;
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
 }
 
 .form-actions {

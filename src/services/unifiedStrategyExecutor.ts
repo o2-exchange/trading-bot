@@ -84,6 +84,9 @@ class UnifiedStrategyExecutor {
       )
 
       // Check max open orders if configured
+      let shouldPlaceBuy = true
+      let shouldPlaceSell = true
+      
       if (config.orderManagement.maxOpenOrders > 0) {
         const openOrders = await orderService.getOpenOrders(market.market_id, ownerAddress)
         const buyOrders = openOrders.filter((o) => o.side === OrderSide.Buy)
@@ -92,12 +95,14 @@ class UnifiedStrategyExecutor {
         if (config.orderConfig.side === 'Buy' || config.orderConfig.side === 'Both') {
           if (buyOrders.length >= config.orderManagement.maxOpenOrders) {
             console.log(`[UnifiedStrategyExecutor] Max buy orders (${buyOrders.length}) reached, skipping buy`)
+            shouldPlaceBuy = false
           }
         }
         
         if (config.orderConfig.side === 'Sell' || config.orderConfig.side === 'Both') {
           if (sellOrders.length >= config.orderManagement.maxOpenOrders) {
             console.log(`[UnifiedStrategyExecutor] Max sell orders (${sellOrders.length}) reached, skipping sell`)
+            shouldPlaceSell = false
           }
         }
       }
@@ -118,8 +123,8 @@ class UnifiedStrategyExecutor {
       // Calculate prices based on price mode
       const prices = this.calculatePrices(market, ticker, orderBook, config.orderConfig)
       
-      // Place buy orders if configured
-      if (config.orderConfig.side === 'Buy' || config.orderConfig.side === 'Both') {
+      // Place buy orders if configured and not at max limit
+      if (shouldPlaceBuy && (config.orderConfig.side === 'Buy' || config.orderConfig.side === 'Both')) {
         const buyOrder = await this.placeBuyOrder(
           market,
           config,
@@ -133,8 +138,8 @@ class UnifiedStrategyExecutor {
         }
       }
 
-      // Place sell orders if configured
-      if (config.orderConfig.side === 'Sell' || config.orderConfig.side === 'Both') {
+      // Place sell orders if configured and not at max limit
+      if (shouldPlaceSell && (config.orderConfig.side === 'Sell' || config.orderConfig.side === 'Both')) {
         // Read fresh config from database to ensure we have latest averageBuyPrice
         // This is critical for profit protection logic
         const storedConfig = await db.strategyConfigs.get(market.market_id)
@@ -422,9 +427,15 @@ class UnifiedStrategyExecutor {
         return null
       }
 
-      // Calculate quantity from fixed USD amount
-      // quantity = fixedAmount / price
-      const quantity = new Decimal(fixedAmount).div(price)
+      // Apply maxOrderSizeUsd cap if configured
+      let orderValue = new Decimal(fixedAmount)
+      if (positionSizing.maxOrderSizeUsd && orderValue.gt(positionSizing.maxOrderSizeUsd)) {
+        orderValue = new Decimal(positionSizing.maxOrderSizeUsd)
+      }
+
+      // Calculate quantity from order value
+      // quantity = orderValue / price
+      const quantity = orderValue.div(price)
       
       // Check if we have enough balance
       if (side === 'buy') {
@@ -451,17 +462,32 @@ class UnifiedStrategyExecutor {
 
       return {
         quantity,
-        valueUsd: fixedAmount,
+        valueUsd: orderValue.toNumber(),
       }
     }
 
     // Percentage-based sizing
-    const balancePercentage = positionSizing.balancePercentage / 100
+    // Use separate percentages for base/quote if available, otherwise fallback to balancePercentage
+    let balancePercentage: number
+    if (side === 'buy') {
+      balancePercentage = (positionSizing.quoteBalancePercentage !== undefined) 
+        ? positionSizing.quoteBalancePercentage / 100
+        : positionSizing.balancePercentage / 100
+    } else {
+      balancePercentage = (positionSizing.baseBalancePercentage !== undefined)
+        ? positionSizing.baseBalancePercentage / 100
+        : positionSizing.balancePercentage / 100
+    }
 
     if (side === 'buy') {
       // For buy orders, use quote balance
       const quoteBalanceHuman = new Decimal(balances.quote.unlocked).div(10 ** market.quote.decimals)
-      const orderValue = quoteBalanceHuman.mul(balancePercentage)
+      let orderValue = quoteBalanceHuman.mul(balancePercentage)
+      
+      // Apply maxOrderSizeUsd cap if configured
+      if (positionSizing.maxOrderSizeUsd && orderValue.gt(positionSizing.maxOrderSizeUsd)) {
+        orderValue = new Decimal(positionSizing.maxOrderSizeUsd)
+      }
       
       // Calculate quantity from order value
       const quantity = orderValue.div(price)
@@ -473,11 +499,21 @@ class UnifiedStrategyExecutor {
     } else {
       // For sell orders, use base balance
       const baseBalanceHuman = new Decimal(balances.base.unlocked).div(10 ** market.base.decimals)
-      const quantity = baseBalanceHuman.mul(balancePercentage)
+      let quantity = baseBalanceHuman.mul(balancePercentage)
+      
+      // Calculate order value in USD
+      let orderValue = quantity.mul(price)
+      
+      // Apply maxOrderSizeUsd cap if configured
+      if (positionSizing.maxOrderSizeUsd && orderValue.gt(positionSizing.maxOrderSizeUsd)) {
+        orderValue = new Decimal(positionSizing.maxOrderSizeUsd)
+        // Recalculate quantity based on capped value
+        quantity = orderValue.div(price)
+      }
       
       return {
         quantity,
-        valueUsd: quantity.mul(price).toNumber(),
+        valueUsd: orderValue.toNumber(),
       }
     }
   }
