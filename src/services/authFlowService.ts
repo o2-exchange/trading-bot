@@ -2,6 +2,7 @@ import { tradingAccountService } from './tradingAccountService'
 import { sessionService } from './sessionService'
 import { eligibilityService } from './eligibilityService'
 import { useTermsOfUseStore } from '../stores/useTermsOfUseStore'
+import { useSessionStore } from '../stores/useSessionStore'
 import { o2ApiService } from './o2ApiService'
 import { walletService } from './walletService'
 import { marketService } from './marketService'
@@ -53,6 +54,9 @@ class AuthFlowService {
 
   private listeners: Set<(context: AuthFlowContext) => void> = new Set()
 
+  // Prevent concurrent startFlow calls (e.g., from React strict mode)
+  private isFlowRunning = false
+
   subscribe(listener: (context: AuthFlowContext) => void) {
     this.listeners.add(listener)
     return () => {
@@ -74,44 +78,105 @@ class AuthFlowService {
   }
 
   async startFlow(): Promise<void> {
-    const wallet = walletService.getConnectedWallet()
-    if (!wallet) {
-      throw new Error('No wallet connected')
-    }
-
-    const normalizedAddress = wallet.address.toLowerCase()
-
-    // Set password for session encryption/decryption early
-    // This ensures it's available whether we're creating a new session
-    // or retrieving an existing one
-    sessionService.setPassword('default-password-change-in-production')
-
-    // First check for active session
-    const activeSession = await this.checkActiveSession(normalizedAddress)
-    if (activeSession) {
-      // User has active session, but we still need to check eligibility status
-      // for the Dashboard to display correctly
-      await this.checkEligibilityStatus(normalizedAddress)
-      
-      this.setState({
-        state: 'ready',
-        sessionId: activeSession.id,
-        error: null,
-      })
+    // CRITICAL: Prevent concurrent calls (e.g., from React strict mode double-mounting)
+    // This prevents duplicate API calls that cause 429 rate limiting
+    if (this.isFlowRunning) {
+      console.log('[AuthFlow] Flow already running, skipping duplicate call')
       return
     }
 
-    // No active session, proceed with auth flow
-    this.setState({ state: 'checkingSituation', error: null })
-    await this.checkSituation()
+    // Check if we're already in a non-idle state
+    if (this.context.state !== 'idle' && this.context.state !== 'error') {
+      console.log('[AuthFlow] Flow already in progress, state:', this.context.state)
+      return
+    }
+
+    this.isFlowRunning = true
+
+    try {
+      const wallet = walletService.getConnectedWallet()
+      if (!wallet) {
+        throw new Error('No wallet connected')
+      }
+
+      const normalizedAddress = wallet.address.toLowerCase()
+
+      // Set password for session encryption/decryption early
+      // This ensures it's available whether we're creating a new session
+      // or retrieving an existing one
+      sessionService.setPassword('default-password-change-in-production')
+
+      // First check for active session
+      const activeSession = await this.checkActiveSession(normalizedAddress)
+      if (activeSession) {
+        // User has active session, but we still need to check eligibility status
+        // for the Dashboard to display correctly
+        await this.checkEligibilityStatus(normalizedAddress)
+
+        this.setState({
+          state: 'ready',
+          sessionId: activeSession.id,
+          error: null,
+        })
+        return
+      }
+
+      // No active session, proceed with auth flow
+      this.setState({ state: 'checkingSituation', error: null })
+      await this.checkSituation()
+    } catch (error: any) {
+      console.error('[AuthFlow] Error in startFlow:', error)
+      // Set error state so UI can show retry button
+      this.setState({
+        state: 'error',
+        error: error.message || 'Failed to start authentication flow',
+      })
+    } finally {
+      this.isFlowRunning = false
+    }
   }
 
   private async checkActiveSession(ownerAddress: string): Promise<{ id: string } | null> {
     try {
-      const session = await sessionService.getActiveSession(ownerAddress)
+      // Get trading account first
+      const tradingAccount = await tradingAccountService.getTradingAccount(ownerAddress)
+      if (!tradingAccount) {
+        console.log('[AuthFlow] No trading account found for active session check')
+        return null
+      }
+
+      // Get session from cache
+      const cachedSession = useSessionStore.getState().getSession(tradingAccount.id as `0x${string}`)
+      if (!cachedSession) {
+        console.log('[AuthFlow] No cached session found')
+        return null
+      }
+
+      // CRITICAL: Validate the session (check expiry, revocation, etc.)
+      // This includes ON-CHAIN validation to detect if session was revoked
+      console.log('[AuthFlow] Validating cached session on-chain...')
+      const isValid = await sessionService.validateSession(
+        tradingAccount.id,
+        ownerAddress,
+        false // DO NOT skip on-chain validation
+      )
+
+      if (!isValid) {
+        console.log('[AuthFlow] ❌ Session invalid on-chain - clearing and restarting flow')
+        // Clear ALL sessions when validation fails (like O2 does)
+        useSessionStore.getState().clearSessions()
+        return null
+      }
+
+      console.log('[AuthFlow] ✅ Session valid on-chain')
+
+      // Get full session from database (skip validation to avoid recursion)
+      const session = await sessionService.getActiveSession(ownerAddress, true)
       return session ? { id: session.id } : null
     } catch (error) {
-      console.warn('Failed to check active session', error)
+      console.error('[AuthFlow] Error checking active session:', error)
+      // Clear sessions on error to force fresh start
+      useSessionStore.getState().clearSessions()
       return null
     }
   }
@@ -402,43 +467,65 @@ class AuthFlowService {
         throw new Error('No wallet connected')
       }
 
+      console.log('[AuthFlow] Creating session for wallet:', wallet.address, 'Type:', wallet.isFuel ? 'Fuel' : 'Ethereum')
+
       const normalizedAddress = wallet.address.toLowerCase()
 
       // Get all markets for session contract IDs (uses cache)
+      console.log('[AuthFlow] Fetching markets...')
       const markets = await marketService.fetchMarkets()
-      const contractIds = markets.map((m) => m.contract_id)
+      // Exclude contract ID that O2 doesn't include (from a market not in O2's whitelist)
+      // Use markets in their original order (O2 doesn't sort them)
+      const EXCLUDED_CONTRACT_ID = '0xca78cbd896cd09f104cd32448e0ef155dace8a0a9ea21ad5f4f9435800038b9b'
+      const marketContractIds = markets
+        .filter((m) => m.contract_id.toLowerCase() !== EXCLUDED_CONTRACT_ID.toLowerCase())
+        .map((m) => m.contract_id)
+      // Include accounts_registry_id at the end if available (matching O2's pattern)
+      const accountsRegistryId = marketService.getAccountsRegistryId()
+      const contractIds = accountsRegistryId 
+        ? [...marketContractIds, accountsRegistryId]
+        : marketContractIds
+      console.log('[AuthFlow] Contract IDs (markets + accounts_registry):', contractIds.length)
 
       // Set password for session encryption
       sessionService.setPassword('default-password-change-in-production')
 
       // Use cached trading account or fetch if not available
-      const tradingAccount = this.context.tradingAccount || 
+      const tradingAccount = this.context.tradingAccount ||
         await tradingAccountService.getOrCreateTradingAccount(normalizedAddress)
-      
+
       // Update cache if we had to fetch it
       if (!this.context.tradingAccount) {
         this.setState({ tradingAccount })
       }
 
+      console.log('[AuthFlow] Trading account:', tradingAccount.id)
+      console.log('[AuthFlow] Starting session creation...')
+
       // Create session with cached trading account
       const session = await sessionService.createSession(
-        normalizedAddress, 
+        normalizedAddress,
         contractIds,
         undefined,
         tradingAccount
       )
 
-      console.log('Session created successfully:', session.id)
-      
+      console.log('[AuthFlow] ✅ Session created successfully:', session.id)
+
       this.setState({
         state: 'ready',
         sessionId: session.id,
         error: null,
       })
-      
-      console.log('Auth flow state updated to ready')
+
+      console.log('[AuthFlow] Auth flow complete - ready to trade')
     } catch (error: any) {
-      console.error('Error creating session:', error)
+      console.error('[AuthFlow] ❌ Error creating session:', error)
+      console.error('[AuthFlow] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
       this.setState({
         state: 'error',
         error: error.message || 'Failed to create session',
@@ -447,6 +534,9 @@ class AuthFlowService {
   }
 
   reset() {
+    // Reset the flow running flag
+    this.isFlowRunning = false
+
     this.setState({
       state: 'idle',
       error: null,

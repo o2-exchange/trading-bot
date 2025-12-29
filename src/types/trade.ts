@@ -5,8 +5,10 @@ export interface Trade {
   orderId: string
   sessionId?: string
   side: 'Buy' | 'Sell'
-  price: string
+  price: string // Limit price (for backward compatibility)
+  priceFill?: string // Actual execution price (price_fill from order)
   quantity: string
+  filledQuantity?: string // Actual filled quantity
   valueUsd?: number
   feeUsd?: number
   baseBalance?: string

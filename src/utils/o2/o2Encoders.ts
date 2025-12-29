@@ -32,7 +32,7 @@ export function createCallToSign(
   }
   let argBytes = callConfig.func.encodeArguments(callConfig.args);
   const [option] = new BigNumberCoder('u64').decode(argBytes.slice(0, 8), 0);
-  if (!option.eq(0)) {
+  if (!option.isZero()) {
     argBytes = argBytes.slice(8 + 64);
   } else {
     argBytes = argBytes.slice(8);
@@ -57,7 +57,13 @@ export async function encodeActions(
 ): Promise<{ invokeScopes: Array<FunctionInvocationScope<any>>; actions: SessionAction[] }> {
   const invokeScopes: Array<FunctionInvocationScope<any>> = [];
   const newActions: Array<SessionAction> = [];
-  if (actions.some((action) => 'CreateOrder' in action)) {
+
+  const hasCreateOrder = actions.some((action) => 'CreateOrder' in action);
+
+  // CRITICAL: Add SettleBalance BEFORE CreateOrder (matching O2 frontend)
+  // This settles any unlocked funds from the orderbook back to the trading account
+  // so they can be used for the new order
+  if (hasCreateOrder) {
     invokeScopes.push(orderBook.functions.settle_balance(tradeAccountIdentity));
     newActions.push({
       SettleBalance: {
@@ -66,6 +72,7 @@ export async function encodeActions(
     });
   }
 
+  // Process the main actions
   for (const action of actions) {
     if ('CreateOrder' in action) {
       invokeScopes.push(createOrderInvokeScope(action, orderBook, orderBookConfig, gasLimit));
@@ -83,6 +90,16 @@ export async function encodeActions(
     } else {
       throw new Error(`Unsupported action type: ${JSON.stringify(action)}`);
     }
+  }
+
+  // Add SettleBalance AFTER CreateOrder as well (matching O2 frontend)
+  if (hasCreateOrder) {
+    invokeScopes.push(orderBook.functions.settle_balance(tradeAccountIdentity));
+    newActions.push({
+      SettleBalance: {
+        to: identityInputToIdentity(tradeAccountIdentity),
+      },
+    });
   }
 
   return { invokeScopes, actions: newActions };

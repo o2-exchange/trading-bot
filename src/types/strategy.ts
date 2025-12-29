@@ -24,16 +24,15 @@ export interface OrderConfig {
 export interface PositionSizingConfig {
   // Size Mode
   sizeMode: 'percentageOfBalance' | 'fixedUsd'
-  
+
   // Percentage-based (most common)
-  balancePercentage: number // % of available balance to use (0-100) - DEPRECATED, use baseBalancePercentage/quoteBalancePercentage instead
+  balancePercentage: number // Legacy fallback - use baseBalancePercentage/quoteBalancePercentage instead
   baseBalancePercentage: number // % of base balance to use for sell orders (0-100)
   quoteBalancePercentage: number // % of quote balance to use for buy orders (0-100)
-  balanceType: 'base' | 'quote' | 'both' // DEPRECATED - kept for backward compatibility only
-  
+
   // Fixed USD (alternative)
   fixedUsdAmount?: number // Fixed USD value per order
-  
+
   // Constraints
   minOrderSizeUsd: number // Minimum order size (e.g., 5 USD)
   maxOrderSizeUsd?: number // Maximum order size per order (optional cap)
@@ -46,21 +45,29 @@ export interface OrderManagementConfig {
   // Profit Protection
   trackFillPrices: boolean // Remember prices at which orders were filled
   onlySellAboveBuyPrice: boolean // Only place sell orders above average buy price
-  
+
   // Order Limits
   maxOpenOrders: number // Maximum open orders per side (e.g., 2 = max 2 buy + 2 sell)
-  
-  // Order Replacement
-  cancelAndReplace: boolean // Cancel existing orders before placing new ones
 }
 
 // ============================================
 // RISK MANAGEMENT
 // ============================================
-// Note: Risk management features are not yet implemented
-// This interface is kept for future use but currently empty
 export interface RiskManagementConfig {
-  // Reserved for future implementation
+  // Take Profit - minimum profit margin above fees
+  takeProfitPercent: number  // default 0.02 (covers 0.01% buy + 0.01% sell fees)
+
+  // Stop Loss - Price Based
+  stopLossEnabled: boolean
+  stopLossPercent: number  // e.g., 5 = sell if price drops 5% below avg buy
+
+  // Stop Loss - Time Based (Order Timeout)
+  orderTimeoutEnabled: boolean
+  orderTimeoutMinutes: number  // e.g., 30 = cancel if not filled in 30 min
+
+  // Max Daily Loss
+  maxDailyLossEnabled: boolean
+  maxDailyLossUsd: number  // e.g., 100 = pause if lost $100 today
 }
 
 // ============================================
@@ -94,23 +101,18 @@ export interface StrategyConfig {
   }
   averageBuyPrice?: string
   averageSellPrice?: string
+
+  // Daily P&L Tracking
+  dailyPnL?: {
+    date: string  // YYYY-MM-DD
+    realizedPnL: number  // USD
+    pausedUntil?: number  // Timestamp when trading can resume (midnight)
+  }
   
   // Metadata
   isActive: boolean
   createdAt: number
   updatedAt: number
-  
-  // Strategy-specific properties (optional, for backward compatibility)
-  // Balance Threshold Strategy
-  baseThreshold?: number
-  quoteThreshold?: number
-  
-  // Market Making Strategy
-  buyPriceAdjustmentPercent?: number
-  sellPriceAdjustmentPercent?: number
-  spreadPercent?: number // Deprecated, kept for backward compatibility
-  orderSizeUsd?: number // Deprecated, kept for backward compatibility
-  rebalanceThreshold?: number // Deprecated, kept for backward compatibility
 }
 
 export interface StrategyConfigStore {
@@ -140,23 +142,27 @@ export function getDefaultStrategyConfig(marketId: string): StrategyConfig {
     
     positionSizing: {
       sizeMode: 'percentageOfBalance',
-      balancePercentage: 100, // DEPRECATED - kept for backward compatibility
+      balancePercentage: 100, // Legacy fallback
       baseBalancePercentage: 100, // Use 100% of base balance for sell orders
       quoteBalancePercentage: 100, // Use 100% of quote balance for buy orders
-      balanceType: 'both', // DEPRECATED - kept for backward compatibility
       minOrderSizeUsd: 5, // Minimum $5 per order
       maxOrderSizeUsd: undefined, // No maximum cap by default
     },
-    
+
     orderManagement: {
       trackFillPrices: true,
       onlySellAboveBuyPrice: true, // Only sell if profitable
       maxOpenOrders: 2, // Max 2 buy + 2 sell orders
-      cancelAndReplace: true, // Cancel old orders before placing new ones
     },
     
     riskManagement: {
-      // Risk management features not yet implemented
+      takeProfitPercent: 0.02,  // 0.02% covers round-trip fees (0.01% buy + 0.01% sell)
+      stopLossEnabled: false,
+      stopLossPercent: 5,  // Sell if price drops 5% below avg buy
+      orderTimeoutEnabled: false,
+      orderTimeoutMinutes: 30,  // Cancel orders not filled in 30 minutes
+      maxDailyLossEnabled: false,
+      maxDailyLossUsd: 100,  // Pause trading if lost $100 today
     },
     
     timing: {

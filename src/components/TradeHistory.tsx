@@ -15,23 +15,23 @@ export default function TradeHistory() {
     setTrades(recentTrades)
   }
   
-  const formatValue = (value: string, decimals: number = 18): string => {
+  const formatValue = (value: string, decimals: number = 18, maxDisplayDecimals: number = 8): string => {
     try {
       const bigIntValue = BigInt(value || '0')
       const divisor = BigInt(10 ** decimals)
-      
+
       const integerPart = bigIntValue / divisor
       const fractionalPart = bigIntValue % divisor
-      
+
       const fractionalStr = fractionalPart.toString().padStart(decimals, '0')
       const fractionalTrimmed = fractionalStr.replace(/0+$/, '')
-      
+
       if (fractionalTrimmed === '') {
         return integerPart.toString()
       }
-      
-      // Format with appropriate decimal places (up to 8 for display)
-      const displayDecimals = Math.min(fractionalTrimmed.length, 8)
+
+      // Format with appropriate decimal places
+      const displayDecimals = Math.min(fractionalTrimmed.length, maxDisplayDecimals)
       return `${integerPart}.${fractionalTrimmed.slice(0, displayDecimals)}`
     } catch (error) {
       console.error('Error formatting value:', error, value)
@@ -39,18 +39,21 @@ export default function TradeHistory() {
     }
   }
   
-  const formatPrice = (price: string, marketId: string): string => {
+  const formatPrice = (price: string, marketId: string, priceFill?: string): string => {
     const market = markets.get(marketId)
     // Price is typically in quote token decimals
     const decimals = market?.quote?.decimals || 18
-    return formatValue(price, decimals)
+    
+    // Prefer fill price if available, otherwise use limit price
+    const priceToFormat = priceFill && priceFill !== '0' ? priceFill : price
+    return formatValue(priceToFormat, decimals)
   }
   
   const formatQuantity = (quantity: string, marketId: string, side: 'Buy' | 'Sell'): string => {
     const market = markets.get(marketId)
-    // Quantity is in base token decimals
+    // Quantity is in base token decimals, limit to 3 decimal places for display
     const decimals = market?.base?.decimals || 18
-    return formatValue(quantity, decimals)
+    return formatValue(quantity, decimals, 3)
   }
 
   useEffect(() => {
@@ -119,7 +122,8 @@ export default function TradeHistory() {
               <th>Time</th>
               <th>Market</th>
               <th>Side</th>
-              <th>Price</th>
+              <th>Order Price</th>
+              <th>Fill Price</th>
               <th>Quantity</th>
               <th>Status</th>
             </tr>
@@ -135,7 +139,18 @@ export default function TradeHistory() {
                     </span>
                   </td>
                   <td>{formatPrice(trade.price, trade.marketId)}</td>
-                  <td>{formatQuantity(trade.quantity, trade.marketId, trade.side)}</td>
+                  <td>
+                    {trade.priceFill && trade.priceFill !== '0' 
+                      ? formatPrice(trade.price, trade.marketId, trade.priceFill)
+                      : <span className="text-muted">-</span>
+                    }
+                  </td>
+                  <td>
+                    {trade.filledQuantity && trade.filledQuantity !== '0'
+                      ? formatQuantity(trade.filledQuantity, trade.marketId, trade.side)
+                      : formatQuantity(trade.quantity, trade.marketId, trade.side)
+                    }
+                  </td>
                   <td>
                     <span className={`status-badge ${trade.success ? 'success' : 'failed'}`}>
                   {trade.success ? 'Success' : 'Failed'}

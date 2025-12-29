@@ -6,6 +6,7 @@ import { StrategyConfigStore } from '../types/strategy'
 import { Order } from '../types/order'
 import { TradingAccount } from '../types/tradingAccount'
 import { SessionKey } from '../types/session'
+import { TradingSession } from '../types/tradingSession'
 
 export interface EncryptedSessionKey {
   id: string // Session ID (address)
@@ -33,6 +34,7 @@ export class O2TradingBotDB extends Dexie {
   strategyConfigs!: Table<StrategyConfigStore, string>
   tradingAccounts!: Table<TradingAccount, string>
   settings!: Table<Settings, string>
+  tradingSessions!: Table<TradingSession, string>
 
   constructor() {
     super('O2TradingBotDB')
@@ -45,6 +47,17 @@ export class O2TradingBotDB extends Dexie {
       strategyConfigs: 'id, marketId, strategyType',
       tradingAccounts: 'id, ownerAddress',
       settings: 'id',
+    })
+    this.version(2).stores({
+      sessions: 'id, tradeAccountId, ownerAddress, createdAt',
+      sessionKeys: 'id, createdAt',
+      markets: 'market_id, contract_id',
+      trades: '++id, timestamp, marketId, orderId, sessionId',
+      orders: 'order_id, market_id, status, createdAt',
+      strategyConfigs: 'id, marketId, strategyType',
+      tradingAccounts: 'id, ownerAddress',
+      settings: 'id',
+      tradingSessions: 'id, ownerAddress, marketId, status, createdAt',
     })
   }
 }

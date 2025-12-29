@@ -63,17 +63,48 @@ class WalletService {
         throw new Error(`Unknown Fuel wallet type: ${walletType}`)
     }
 
+    console.log('[WalletService] Connecting to Fuel wallet:', walletType)
+    console.log('[WalletService] Connector name:', connector.name)
+
+    // Check if the connector is installed/available
+    try {
+      const isInstalled = await connector.ping()
+      if (!isInstalled) {
+        throw new Error(`${connector.name} is not installed or not available`)
+      }
+      console.log('[WalletService] Connector is installed')
+    } catch (error) {
+      throw new Error(`${connector.name} is not installed. Please install the wallet extension first.`)
+    }
+
+    // Check if there's already a connection
+    const hasConnector = await fuel.hasConnector()
+    console.log('[WalletService] Has connector:', hasConnector)
+
+    // Select the connector
+    console.log('[WalletService] Selecting connector:', connector.name)
     await fuel.selectConnector(connector.name)
+
+    // Connect to the wallet
+    console.log('[WalletService] Calling fuel.connect()...')
     await fuel.connect()
+    console.log('[WalletService] fuel.connect() completed')
+
+    // Get the account
     const account = await fuel.currentAccount()
-    
+    console.log('[WalletService] Current account:', account ? 'Found' : 'Not found')
+
     if (!account) {
       throw new Error('Failed to get account from Fuel wallet')
     }
 
     // Convert Address object to string (B256 format)
     const addressString = (account as any).address?.toB256?.() || (account as any).address || String(account)
+    console.log('[WalletService] Account address:', addressString)
 
+    // CRITICAL: DO NOT set wallet in store here!
+    // Let WalletConnectionWatcher handle it via Fuel SDK events
+    // This prevents race conditions and duplicate handling
     const wallet: ConnectedWallet = {
       type: walletType,
       address: addressString,
@@ -81,8 +112,7 @@ class WalletService {
       connector,
     }
 
-    // Persist to store
-    useWalletStore.getState().setConnectedWallet(wallet)
+    console.log('[WalletService] Wallet connected successfully - waiting for event handler')
     return wallet
   }
 

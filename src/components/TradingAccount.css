@@ -10,8 +10,8 @@
 }
 
 .trading-account h2 {
-  margin: 0 0 4px 0;
-  font-size: 18px;
+  margin: 0 0 2px 0;
+  font-size: 15px;
   font-weight: 600;
   color: var(--foreground);
 }
@@ -25,11 +25,11 @@
 .account-id-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .account-id-label {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--muted-foreground);
   font-weight: 500;
 }
@@ -37,9 +37,9 @@
 .account-id-text {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
-  font-size: 13px;
+  font-size: 11px;
   color: var(--muted-foreground);
   transition: color 0.2s;
 }
@@ -65,21 +65,21 @@
 
 .loading-text {
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 12px;
   margin: 0;
 }
 
 
 
 .deposit-link {
-  margin-top: 8px;
+  margin-top: 6px;
   color: var(--primary);
   text-decoration: none;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   transition: color 0.2s;
   max-width: fit-content;
 }
@@ -92,9 +92,9 @@
 .whitelist-badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;

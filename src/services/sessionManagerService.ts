@@ -1,29 +1,50 @@
 import { Account, Address, Provider, bn } from 'fuels'
+import { pad } from 'viem'
 import { TradeAccountManager } from './tradeAccountManager'
 import { FuelSessionSigner } from './fuelSessionSigner'
 import { EthereumAccountAdapter } from './ethereumAccountAdapter'
 import { sessionService } from './sessionService'
 import { walletService, fuel } from './walletService'
+import { o2ApiService } from './o2ApiService'
 import { FUEL_PROVIDER_URL } from '../constants/o2Constants'
+import { BYTES_32 } from 'fuels'
 import { useSessionStore } from '../stores/useSessionStore'
 import { SessionInput } from '../types/contracts/TradeAccount'
 
 class SessionManagerService {
   private managers: Map<string, TradeAccountManager> = new Map()
 
-  async getTradeAccountManager(ownerAddress: string): Promise<TradeAccountManager> {
+  async getTradeAccountManager(ownerAddress: string, refreshNonce: boolean = false): Promise<TradeAccountManager> {
     // Normalize address
     const normalizedAddress = ownerAddress.toLowerCase()
     
     // Check if we already have a manager for this session
-    const session = await sessionService.getActiveSession(normalizedAddress)
+    // CRITICAL: Skip validation here to prevent infinite recursion
+    // (this is called FROM validateSession, so we can't validate again!)
+    const session = await sessionService.getActiveSession(normalizedAddress, true)
     if (!session) {
       throw new Error('No active session found. Please create a session first.')
     }
 
     const cacheKey = `${normalizedAddress}-${session.id}`
     if (this.managers.has(cacheKey)) {
-      return this.managers.get(cacheKey)!
+      const cachedManager = this.managers.get(cacheKey)!
+      // If refreshNonce is true, fetch latest nonce from API before returning (matching O2 frontend)
+      if (refreshNonce) {
+        // Get owner ID for API call
+        const wallet = walletService.getConnectedWallet()
+        let ownerIdForHeader: string
+        if (wallet && !wallet.isFuel) {
+          const paddedAddress = pad(normalizedAddress as `0x${string}`, { size: BYTES_32 })
+          const fuelAddress = Address.fromString(paddedAddress)
+          ownerIdForHeader = fuelAddress.toB256()
+        } else {
+          const fuelAddress = Address.fromString(normalizedAddress)
+          ownerIdForHeader = fuelAddress.toB256()
+        }
+        await cachedManager.fetchNonceFromAPI(session.tradeAccountId, ownerIdForHeader, o2ApiService)
+      }
+      return cachedManager
     }
 
     // Get owner account (supports both Fuel and Ethereum wallets)
@@ -39,12 +60,10 @@ class SessionManagerService {
     let ownerAccount: Account
 
     if (connectedWallet.isFuel) {
-      // Fuel wallet
-      const fuelAccount = await fuel.currentAccount()
-      if (!fuelAccount || typeof fuelAccount === 'string') {
-        throw new Error('No Fuel account available')
-      }
-      ownerAccount = fuelAccount as Account
+      // Fuel wallet - use fuel.getWallet() directly like O2 does
+      console.log('[SessionManagerService] Getting Fuel wallet via fuel.getWallet() for:', connectedWallet.address)
+      const fuelAddress = Address.fromString(connectedWallet.address)
+      ownerAccount = await fuel.getWallet(fuelAddress, provider)
     } else {
       // Ethereum wallet - create adapter
       const ethAddress = Address.fromString(connectedWallet.address)
@@ -70,8 +89,18 @@ class SessionManagerService {
       tradeAccountId: Address.fromString(session.tradeAccountId).toB256() as any,
     })
 
-    // Fetch nonce
-    await manager.fetchNonce()
+    // Fetch nonce from API (matching O2 frontend behavior)
+    const wallet = walletService.getConnectedWallet()
+    let ownerIdForHeader: string
+    if (wallet && !wallet.isFuel) {
+      const paddedAddress = pad(normalizedAddress as `0x${string}`, { size: BYTES_32 })
+      const fuelAddress = Address.fromString(paddedAddress)
+      ownerIdForHeader = fuelAddress.toB256()
+    } else {
+      const fuelAddress = Address.fromString(normalizedAddress)
+      ownerIdForHeader = fuelAddress.toB256()
+    }
+    await manager.fetchNonceFromAPI(session.tradeAccountId, ownerIdForHeader, o2ApiService)
 
     // Try to recover session from chain
     let sessionSet = false
@@ -81,9 +110,9 @@ class SessionManagerService {
       console.log('[SessionManagerService] Session recovered from chain')
     } catch (error) {
       console.warn('[SessionManagerService] Could not recover session from chain, trying store...', error)
-      
+
       // Fallback: get session from store
-      const storedSession = useSessionStore.getState().getSession(session.tradeAccountId)
+      const storedSession = useSessionStore.getState().getSession(session.tradeAccountId as `0x${string}`)
       if (storedSession) {
         manager.setSession(storedSession)
         sessionSet = true

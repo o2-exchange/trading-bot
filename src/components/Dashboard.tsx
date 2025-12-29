@@ -5,6 +5,7 @@ import { tradingEngine } from '../services/tradingEngine'
 import { tradingAccountService } from '../services/tradingAccountService'
 import { marketService } from '../services/marketService'
 import { authFlowService } from '../services/authFlowService'
+import { tradingSessionService } from '../services/tradingSessionService'
 import { useToast } from './ToastProvider'
 import AuthFlowGuard from './AuthFlowGuard'
 import TradingAccount from './TradingAccount'
@@ -32,6 +33,7 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
   const [tradingAccount, setTradingAccount] = useState<any>(null)
   const [isEligible, setIsEligible] = useState<boolean | null>(null)
   const [isTrading, setIsTrading] = useState(false)
+  const [hasResumableSession, setHasResumableSession] = useState(false)
   const [markets, setMarkets] = useState<any[]>([])
   const [balances, setBalances] = useState<TradingAccountBalances | null>(null)
   const [balancesLoading, setBalancesLoading] = useState(false)
@@ -87,6 +89,10 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
             setBalancesLoading(false)
           }
         }
+
+        // Check for resumable trading session
+        const resumableSession = await tradingSessionService.getResumableSession(normalizedAddress)
+        setHasResumableSession(!!resumableSession)
       } catch (error: any) {
         console.error('Failed to load dashboard data', error)
       }
@@ -188,7 +194,7 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     return unsubscribe
   }, [isTrading, tradingAccount, markets, walletAddress])
 
-  const handleStartTrading = async () => {
+  const handleStartTrading = async (resumeSession: boolean = false) => {
     if (!walletAddress || !tradingAccount) {
       addToast('Wallet or trading account not available', 'error')
       return
@@ -213,9 +219,10 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     }
 
     try {
-      await tradingEngine.start()
+      await tradingEngine.start({ resumeSession })
       setIsTrading(true)
-      addToast('Trading started', 'success')
+      setHasResumableSession(false) // Clear resumable state since we're now trading
+      addToast(resumeSession ? 'Trading session resumed' : 'New trading session started', 'success')
     } catch (error: any) {
       addToast(`Failed to start trading: ${error.message}`, 'error')
     }
@@ -224,6 +231,7 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
   const handleStopTrading = () => {
     tradingEngine.stop()
     setIsTrading(false)
+    setHasResumableSession(true) // Session is now paused and can be resumed
     addToast('Trading stopped', 'info')
   }
 
@@ -232,15 +240,33 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     onDisconnect()
   }
 
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyAddress = async () => {
+    if (walletAddress) {
+      await navigator.clipboard.writeText(walletAddress)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const formatAddress = (address: string) => {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`
+  }
+
   return (
     <AuthFlowGuard>
       <div className="dashboard">
         <div className="dashboard-header">
-          <h1>o2 Trading Bot</h1>
+          <h1>o2 Trading Bot <span className="alpha-badge">Alpha</span></h1>
           <div className="header-actions">
-            <span className="wallet-address">
-              {walletAddress ? `${walletAddress.slice(0, 10)}...${walletAddress.slice(-8)}` : 'Not connected'}
-            </span>
+            {walletAddress && (
+              <button className="wallet-chip" onClick={handleCopyAddress} title={walletAddress}>
+                <span className="wallet-dot"></span>
+                <span className="wallet-address-text">{formatAddress(walletAddress)}</span>
+                <span className="copy-icon">{copied ? '✓' : '⧉'}</span>
+              </button>
+            )}
             <button onClick={handleDisconnect} className="disconnect-button">
               Disconnect
             </button>
@@ -269,83 +295,87 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
       </div>
 
       <div className="dashboard-content">
-        {activeTab === 'dashboard' && (
-          <>
-            <CompetitionPanel walletAddress={walletAddress} />
-            <div className="dashboard-main">
-              <div className="dashboard-left-column">
-                <div className="controls-section">
-                  <TradingAccount account={tradingAccount} isEligible={isEligible} />
-                  
-                  <div className="trading-controls">
-                    <h2>Trading Controls</h2>
-                    {showStrategyRecommendation && (
-                      <div className="strategy-recommendation-banner">
-                        <span className="recommendation-text">
-                          No active strategy configured. Please create and activate a strategy in the Strategy Configuration section below before starting trading.
-                        </span>
+        {/* Dashboard tab - always mounted to preserve TradeConsole state */}
+        <div className="tab-panel" style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
+          <CompetitionPanel walletAddress={walletAddress} />
+          <div className="dashboard-main">
+            <div className="dashboard-left-column">
+              <div className="controls-section">
+                <TradingAccount account={tradingAccount} isEligible={isEligible} />
+
+                <div className="trading-controls">
+                  <h2>Trading Controls</h2>
+                  {showStrategyRecommendation && (
+                    <div className="strategy-recommendation-banner">
+                      <span className="recommendation-text">
+                        No active strategy configured. Please create and activate a strategy in the Strategy Configuration section below before starting trading.
+                      </span>
+                    </div>
+                  )}
+                  {!isTrading ? (
+                    hasResumableSession ? (
+                      <div className="trading-buttons-group">
+                        <button onClick={() => handleStartTrading(true)} className="start-button resume-button">
+                          Resume Session
+                        </button>
+                        <button onClick={() => handleStartTrading(false)} className="start-button new-session-button">
+                          New Session
+                        </button>
                       </div>
-                    )}
-                    {!isTrading ? (
-                      <button onClick={handleStartTrading} className="start-button">
+                    ) : (
+                      <button onClick={() => handleStartTrading(false)} className="start-button">
                         Start Trading
                       </button>
-                    ) : (
-                      <button onClick={handleStopTrading} className="stop-button">
-                        Stop Trading
-                      </button>
-                    )}
-                    {isTrading && (
-                      <div className="trading-status-indicator">
-                        <span className="status-indicator active"></span>
-                        <span>Trading Active</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <TradeConsole isTrading={isTrading} />
+                    )
+                  ) : (
+                    <button onClick={handleStopTrading} className="stop-button">
+                      Stop Trading
+                    </button>
+                  )}
                 </div>
 
-                <div className="markets-section">
-                  <div className="section-header">
-                    <h2>Available Markets</h2>
-                  </div>
-                  <div className="section-content">
-                    <MarketSelector markets={markets} />
-                  </div>
-                </div>
+                <TradeConsole isTrading={isTrading} onViewOrders={() => setActiveTab('orders')} />
               </div>
 
-              <div className="dashboard-right-column">
-                <div className="balances-section">
-                  <div className="section-header">
-                    <h2>Balances</h2>
-                    <a
-                      href="https://o2.app"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="deposit-link"
-                    >
-                      Deposit Funds on o2.app →
-                    </a>
-                  </div>
-                  <div className="section-content">
-                    <Balances balances={balances} loading={balancesLoading} />
-                  </div>
+              <div className="markets-section">
+                <div className="section-header">
+                  <h2>Available Markets</h2>
                 </div>
-
-                <div className="strategy-settings-section">
-                  <div className="section-header">
-                    <h2>Strategy Configuration</h2>
-                  </div>
-                  <div className="section-content">
-                    <StrategyConfig markets={markets} />
-                  </div>
+                <div className="section-content">
+                  <MarketSelector markets={markets} />
                 </div>
               </div>
             </div>
-          </>
-        )}
+
+            <div className="dashboard-right-column">
+              <div className="balances-section">
+                <div className="section-header">
+                  <h2>Balances</h2>
+                  <a
+                    href="https://o2.app"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="deposit-link"
+                  >
+                    Deposit Funds on o2.app →
+                  </a>
+                </div>
+                <div className="section-content">
+                  <Balances balances={balances} loading={balancesLoading} />
+                </div>
+              </div>
+
+              <div className="strategy-settings-section">
+                <div className="section-header">
+                  <h2>Strategy Configuration</h2>
+                </div>
+                <div className="section-content">
+                  <StrategyConfig markets={markets} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {activeTab === 'orders' && (
           <OrderHistory />

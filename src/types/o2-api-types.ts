@@ -19,6 +19,16 @@ export interface DepthOrder {
   quantity: string;
 }
 
+// API response structure for depth endpoint
+export interface DepthApiResponse {
+  action: string;
+  orders: {
+    buys: Array<[string, string]>; // [price, quantity] sorted descending (highest first = bids)
+    sells: Array<[string, string]>; // [price, quantity] sorted ascending (lowest first = asks)
+  };
+  market_id: string;
+}
+
 export interface OrderHistory {
   status: string;
   tx_id: string;
@@ -35,6 +45,7 @@ export interface OrderFill {
 export interface Order {
   cancel: boolean;
   close: boolean;
+  partially_filled: boolean;
   fills: OrderFill[];
   history: OrderHistory[];
   market_id: string;

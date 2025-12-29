@@ -3,6 +3,8 @@ import { orderService } from './orderService'
 import { db } from './dbService'
 import { tradingEngine } from './tradingEngine'
 import { marketService } from './marketService'
+import { OrderSide } from '../types/order'
+import { sessionService } from './sessionService'
 
 class OrderFulfillmentPolling {
   private pollingIntervals: Map<string, number> = new Map()
@@ -54,6 +56,30 @@ class OrderFulfillmentPolling {
                 averageBuyPrice: updatedConfig.averageBuyPrice,
                 averageSellPrice: updatedConfig.averageSellPrice
               })
+
+              // Immediately place sell orders for buy fills
+              const normalizedAddress = ownerAddress.toLowerCase()
+              const session = await sessionService.getActiveSession(normalizedAddress)
+              if (session) {
+                for (const [orderId, { order }] of fills) {
+                  // Check if this is a buy order
+                  if (order.side === OrderSide.Buy) {
+                    // Place immediate sell order after buy fill
+                    try {
+                      await orderFulfillmentService.placeSellOrderAfterBuyFill(
+                        order,
+                        market,
+                        updatedConfig,
+                        ownerAddress,
+                        session.tradeAccountId
+                      )
+                    } catch (error) {
+                      console.error(`[OrderFulfillmentPolling] Error placing immediate sell order for buy fill ${orderId}:`, error)
+                      // Continue with other fills even if one fails
+                    }
+                  }
+                }
+              }
             }
           }
         }

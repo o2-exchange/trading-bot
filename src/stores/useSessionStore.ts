@@ -3,25 +3,29 @@ import { persist, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { SessionInput } from '../types/contracts/TradeAccount'
 
+// Trading Account ID (not wallet address!) -> SessionInput
+// This matches O2's implementation where sessions are keyed by trading account
 interface SessionStoreState {
-  // Trading Account ID -> SessionInput
-  sessions: Record<string, SessionInput | null>
-  setSession: (tradingAccountId: string, session: SessionInput | null) => void
-  getSession: (tradingAccountId: string) => SessionInput | null
+  sessions: Record<`0x${string}`, SessionInput | null>
+  setSession: (tradingAccountId: `0x${string}`, session: SessionInput | null) => void
+  getSession: (tradingAccountId: `0x${string}`) => SessionInput | null
   clearSessions: () => void
+  clearSessionForAccount: (tradingAccountId: `0x${string}`) => void
 }
 
-const STORAGE_VERSION = 1
+const STORAGE_VERSION = 2 // Increment version to force migration
 
 const createSessionStore = immer<SessionStoreState>((set, get) => {
-  const setSession = (tradingAccountId: string, session: SessionInput | null) => {
+  const setSession = (tradingAccountId: `0x${string}`, session: SessionInput | null) => {
     set((state) => {
-      state.sessions[tradingAccountId] = session
+      const normalizedId = tradingAccountId.toLowerCase() as `0x${string}`
+      state.sessions[normalizedId] = session
     })
   }
 
-  const getSession = (tradingAccountId: string): SessionInput | null => {
-    return get().sessions[tradingAccountId] || null
+  const getSession = (tradingAccountId: `0x${string}`): SessionInput | null => {
+    const normalizedId = tradingAccountId.toLowerCase() as `0x${string}`
+    return get().sessions[normalizedId] || null
   }
 
   const clearSessions = () => {
@@ -30,11 +34,19 @@ const createSessionStore = immer<SessionStoreState>((set, get) => {
     })
   }
 
+  const clearSessionForAccount = (tradingAccountId: `0x${string}`) => {
+    set((state) => {
+      const normalizedId = tradingAccountId.toLowerCase() as `0x${string}`
+      delete state.sessions[normalizedId]
+    })
+  }
+
   return {
     sessions: {},
     setSession,
     getSession,
     clearSessions,
+    clearSessionForAccount,
   }
 })
 
@@ -43,11 +55,9 @@ const createPersistStore = persist(createSessionStore, {
   version: STORAGE_VERSION,
   migrate: (persistedState: any, version) => {
     if (version < STORAGE_VERSION) {
+      // Force clear old sessions on migration
       return {
         sessions: {},
-        setSession: () => {},
-        getSession: () => null,
-        clearSessions: () => {},
       }
     }
     return persistedState
@@ -66,4 +76,5 @@ export const sessionSelectors = {
   getSession: (state: SessionStoreState) => state.getSession,
   setSession: (state: SessionStoreState) => state.setSession,
   clearSessions: (state: SessionStoreState) => state.clearSessions,
+  clearSessionForAccount: (state: SessionStoreState) => state.clearSessionForAccount,
 }

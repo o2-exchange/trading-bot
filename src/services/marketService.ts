@@ -8,6 +8,7 @@ class MarketService {
   private tickerCache: Map<string, MarketTicker> = new Map()
   private orderBookCache: Map<string, OrderBookDepth> = new Map()
   private booksWhitelistId: string | null = null
+  private accountsRegistryId: string | null = null
 
   async fetchMarkets(forceRefresh: boolean = false): Promise<Market[]> {
     // Check cache first - if we have markets cached and not forcing refresh, return them
@@ -23,11 +24,14 @@ class MarketService {
         for (const market of storedMarkets) {
           this.marketsCache.set(market.market_id, market)
         }
-        // Only fetch from API if we don't have books_whitelist_id yet
-        if (!this.booksWhitelistId) {
+        // Only fetch from API if we don't have books_whitelist_id or accounts_registry_id yet
+        if (!this.booksWhitelistId || !this.accountsRegistryId) {
           const response = await o2ApiService.getMarkets()
           if (response.books_whitelist_id) {
             this.booksWhitelistId = response.books_whitelist_id
+          }
+          if (response.accounts_registry_id) {
+            this.accountsRegistryId = response.accounts_registry_id
           }
         }
         return storedMarkets
@@ -37,9 +41,12 @@ class MarketService {
     // Fetch from API only if not cached or forcing refresh
     const response = await o2ApiService.getMarkets()
     
-    // Store books_whitelist_id
+    // Store books_whitelist_id and accounts_registry_id
     if (response.books_whitelist_id) {
       this.booksWhitelistId = response.books_whitelist_id
+    }
+    if (response.accounts_registry_id) {
+      this.accountsRegistryId = response.accounts_registry_id
     }
     
     // Cache markets
@@ -53,6 +60,10 @@ class MarketService {
 
   getBooksWhitelistId(): string | null {
     return this.booksWhitelistId
+  }
+
+  getAccountsRegistryId(): string | null {
+    return this.accountsRegistryId
   }
 
   async getMarket(marketId: string): Promise<Market | null> {

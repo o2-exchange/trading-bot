@@ -3,7 +3,6 @@ import { Market } from '../types/market'
 import { StrategyConfigStore, StrategyConfig as StrategyConfigType, getDefaultStrategyConfig } from '../types/strategy'
 import { db } from '../services/dbService'
 import { useToast } from './ToastProvider'
-import { marketService } from '../services/marketService'
 import './StrategyConfig.css'
 
 interface StrategyConfigProps {
@@ -151,10 +150,23 @@ export default function StrategyConfig({ markets }: StrategyConfigProps) {
     let configToSave: StrategyConfigType
 
     if (editingConfig) {
-      // Update existing config
-      configToSave = {
-        ...editingConfig.config,
-        updatedAt: Date.now(),
+      // Check if market ID has changed - if so, clear fill prices
+      if (editingConfig.config.marketId !== selectedMarket) {
+        // Market changed - clear fill prices and update market ID
+        configToSave = {
+          ...editingConfig.config,
+          marketId: selectedMarket,
+          averageBuyPrice: undefined,
+          averageSellPrice: undefined,
+          lastFillPrices: undefined,
+          updatedAt: Date.now(),
+        }
+      } else {
+        // Update existing config (same market)
+        configToSave = {
+          ...editingConfig.config,
+          updatedAt: Date.now(),
+        }
       }
     } else {
       // Create new config with defaults
@@ -283,10 +295,7 @@ export default function StrategyConfig({ markets }: StrategyConfigProps) {
           <div className="configs-grid">
             {configs.map((config) => {
               const market = markets.find((m) => m.market_id === config.marketId)
-              const marketPair = market 
-                ? `${market.base.symbol}/${market.quote.symbol}`
-                : config.marketId.slice(0, 8) + '...'
-              
+
               return (
                 <div key={config.id} className="config-card">
                   <div className="config-card-header">
@@ -348,27 +357,20 @@ export default function StrategyConfig({ markets }: StrategyConfigProps) {
                         </div>
                       </div>
                     )}
-                    {config.config.averageBuyPrice && config.config.averageBuyPrice !== '0' && (
-                      <div className="config-stats">
-                        <div className="stat-item">
-                          <span className="stat-label">Avg Buy Price</span>
-                          <span className="stat-value">{parseFloat(config.config.averageBuyPrice).toFixed(4)}</span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                   
                   <div className="config-card-actions">
-                    <button onClick={() => handleEdit(config)} className="btn-action btn-edit">
+                    <button type="button" onClick={() => handleEdit(config)} className="btn-action btn-edit">
                       Edit
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleToggleActive(config)}
                       className={`btn-action ${config.isActive ? 'btn-deactivate' : 'btn-activate'}`}
                     >
                       {config.isActive ? 'Deactivate' : 'Activate'}
                     </button>
-                    <button onClick={() => handleDelete(config)} className="btn-action btn-delete">
+                    <button type="button" onClick={() => handleDelete(config)} className="btn-action btn-delete">
                       Delete
                     </button>
                   </div>
@@ -403,18 +405,6 @@ function StrategyConfigForm({
   onCancel,
   onReset,
 }: StrategyConfigFormProps) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['basic', 'order']))
-
-  const toggleSection = (section: string) => {
-    const newExpanded = new Set(expandedSections)
-    if (newExpanded.has(section)) {
-      newExpanded.delete(section)
-    } else {
-      newExpanded.add(section)
-    }
-    setExpandedSections(newExpanded)
-  }
-
   const updateConfig = (updates: Partial<StrategyConfigType>) => {
     onConfigChange({
       ...config,
@@ -468,23 +458,14 @@ function StrategyConfigForm({
   }
 
   return (
-    <div className="strategy-config-form">
-      <div className="form-section">
-        <div className="section-header" onClick={() => toggleSection('basic')}>
-          <h3>Basic Settings</h3>
-          <span className="section-toggle">{expandedSections.has('basic') ? '−' : '+'}</span>
-        </div>
-        {expandedSections.has('basic') && (
-          <div className="section-content">
-        <div className="form-group">
-              <label>Market *</label>
+    <div className="strategy-config-form compact">
+      {/* Row 1: Market & Name */}
+      <div className="form-row">
+        <div className="form-field flex-2">
+          <label>Market</label>
           <div className="select-wrapper">
-            <select
-              value={selectedMarket}
-              onChange={(e) => onMarketChange(e.target.value)}
-              required
-            >
-              <option value="">Select a market</option>
+            <select value={selectedMarket} onChange={(e) => onMarketChange(e.target.value)} required>
+              <option value="">Select market</option>
               {markets.map((market) => (
                 <option key={market.market_id} value={market.market_id}>
                   {market.base.symbol}/{market.quote.symbol}
@@ -492,314 +473,184 @@ function StrategyConfigForm({
               ))}
             </select>
           </div>
+        </div>
+        <div className="form-field flex-2">
+          <label>Strategy Name</label>
+          <input
+            type="text"
+            value={config.name || ''}
+            onChange={(e) => updateConfig({ name: e.target.value })}
+            placeholder="Optional"
+          />
+        </div>
+      </div>
+
+      <div className="form-divider" />
+
+      {/* Row 2: Order Type, Price Mode, Side */}
+      <div className="form-row">
+        <div className="form-field">
+          <label>Order Type</label>
+          <div className="select-wrapper">
+            <select value={config.orderConfig.orderType} onChange={(e) => updateOrderConfig({ orderType: e.target.value as any })}>
+              <option value="Market">Market</option>
+              <option value="Spot">Spot</option>
+            </select>
+          </div>
+        </div>
+        <div className="form-field">
+          <label>Price Mode</label>
+          <div className="select-wrapper">
+            <select value={config.orderConfig.priceMode} onChange={(e) => updateOrderConfig({ priceMode: e.target.value as any })}>
+              <option value="offsetFromMid">Mid Price</option>
+              <option value="offsetFromBestBid">Best Bid</option>
+              <option value="offsetFromBestAsk">Best Ask</option>
+              <option value="market">Market</option>
+            </select>
+          </div>
+        </div>
+        <div className="form-field">
+          <label>Side</label>
+          <div className="btn-group">
+            <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Buy' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Buy' })}>Buy</button>
+            <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Sell' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Sell' })}>Sell</button>
+            <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Both' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Both' })}>Both</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Price Offset, Max Spread */}
+      <div className="form-row">
+        <div className="form-field">
+          <label>Price Offset %</label>
+          <input type="number" step="0.01" value={config.orderConfig.priceOffsetPercent} onChange={(e) => updateOrderConfig({ priceOffsetPercent: parseFloat(e.target.value) || 0 })} />
+        </div>
+        <div className="form-field">
+          <label>Max Spread %</label>
+          <input type="number" step="0.1" value={config.orderConfig.maxSpreadPercent} onChange={(e) => updateOrderConfig({ maxSpreadPercent: parseFloat(e.target.value) || 0 })} />
+        </div>
+        <div className="form-field">
+          <label>Max Open Orders</label>
+          <input type="number" min="1" value={config.orderManagement.maxOpenOrders} onChange={(e) => updateOrderManagement({ maxOpenOrders: parseInt(e.target.value) || 2 })} />
+        </div>
+      </div>
+
+      <div className="form-divider" />
+
+      {/* Position Sizing */}
+      <div className="form-section-label">Position Sizing</div>
+      <div className="form-row">
+        <div className="form-field">
+          <label>Size Mode</label>
+          <div className="btn-group">
+            <button type="button" className={`btn-toggle ${config.positionSizing.sizeMode === 'percentageOfBalance' ? 'active' : ''}`} onClick={() => updatePositionSizing({ sizeMode: 'percentageOfBalance' })}>% Balance</button>
+            <button type="button" className={`btn-toggle ${config.positionSizing.sizeMode === 'fixedUsd' ? 'active' : ''}`} onClick={() => updatePositionSizing({ sizeMode: 'fixedUsd' })}>Fixed USD</button>
+          </div>
+        </div>
+        {config.positionSizing.sizeMode === 'percentageOfBalance' ? (
+          <>
+            <div className="form-field">
+              <label>{markets.find(m => m.market_id === selectedMarket)?.base.symbol || 'Base'} Balance %</label>
+              <input type="number" min="0" max="100" step="1" value={config.positionSizing.baseBalancePercentage ?? config.positionSizing.balancePercentage} onChange={(e) => updatePositionSizing({ baseBalancePercentage: parseFloat(e.target.value) || 0 })} />
             </div>
-            <div className="form-group">
-              <label>Strategy Name (optional)</label>
-              <input
-                type="text"
-                value={config.name || ''}
-                onChange={(e) => updateConfig({ name: e.target.value })}
-                placeholder="My Trading Strategy"
-              />
+            <div className="form-field">
+              <label>{markets.find(m => m.market_id === selectedMarket)?.quote.symbol || 'Quote'} Balance %</label>
+              <input type="number" min="0" max="100" step="1" value={config.positionSizing.quoteBalancePercentage ?? config.positionSizing.balancePercentage} onChange={(e) => updatePositionSizing({ quoteBalancePercentage: parseFloat(e.target.value) || 0 })} />
             </div>
+          </>
+        ) : (
+          <div className="form-field flex-2">
+            <label>Fixed Amount (USD)</label>
+            <input type="number" min="0" step="0.01" value={config.positionSizing.fixedUsdAmount || 0} onChange={(e) => updatePositionSizing({ fixedUsdAmount: parseFloat(e.target.value) || 0 })} />
           </div>
         )}
       </div>
 
-      <div className="form-section">
-        <div className="section-header" onClick={() => toggleSection('order')}>
-          <h3>Order Settings</h3>
-          <span className="section-toggle">{expandedSections.has('order') ? '−' : '+'}</span>
+      <div className="form-row">
+        <div className="form-field">
+          <label>Min Order (USD)</label>
+          <input type="number" min="0" step="0.01" value={config.positionSizing.minOrderSizeUsd} onChange={(e) => updatePositionSizing({ minOrderSizeUsd: parseFloat(e.target.value) || 5 })} />
         </div>
-        {expandedSections.has('order') && (
-          <div className="section-content">
-            <div className="form-group">
-              <label>Order Type *</label>
-              <div className="select-wrapper">
-                <select
-                  value={config.orderConfig.orderType}
-                  onChange={(e) => updateOrderConfig({ orderType: e.target.value as any })}
-                >
-                  <option value="Market">Market</option>
-                  <option value="Spot">Spot</option>
-                </select>
-              </div>
-              <small>Market: Executes immediately at the best available price. Spot: Executes immediately, similar to Market but with different contract-level handling.</small>
-            </div>
-            <div className="form-group">
-              <label>Price Mode *</label>
-              <div className="select-wrapper">
-                <select
-                  value={config.orderConfig.priceMode}
-                  onChange={(e) => updateOrderConfig({ priceMode: e.target.value as any })}
-                >
-                  <option value="offsetFromMid">Offset from Mid Price</option>
-                  <option value="offsetFromBestBid">Offset from Best Bid</option>
-                  <option value="offsetFromBestAsk">Offset from Best Ask</option>
-                  <option value="market">Market Price</option>
-                </select>
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Price Offset (%) *</label>
-              <input
-                type="number"
-                step="0.01"
-                value={config.orderConfig.priceOffsetPercent}
-                onChange={(e) => updateOrderConfig({ priceOffsetPercent: parseFloat(e.target.value) || 0 })}
-              />
-              <small>Price offset from reference (positive = above, negative = below). For Market/Spot orders, this sets the target price but orders execute at best available price.</small>
-            </div>
-            <div className="form-group">
-              <label>Max Spread (%) *</label>
-              <input
-                type="number"
-                step="0.1"
-                value={config.orderConfig.maxSpreadPercent}
-                onChange={(e) => updateOrderConfig({ maxSpreadPercent: parseFloat(e.target.value) || 0 })}
-              />
-              <small>Don't trade if spread exceeds this percentage</small>
-            </div>
-            <div className="form-group">
-              <label>Order Side *</label>
-              <div className="radio-group">
-                <label className="radio-option">
-                  <input
-                    type="radio"
-                    name="orderSide"
-                    value="Buy"
-                    checked={config.orderConfig.side === 'Buy'}
-                    onChange={() => updateOrderConfig({ side: 'Buy' })}
-                  />
-                  <span className="radio-custom"></span>
-                  <span className="radio-label">Buy</span>
-                </label>
-                <label className="radio-option">
-                  <input
-                    type="radio"
-                    name="orderSide"
-                    value="Sell"
-                    checked={config.orderConfig.side === 'Sell'}
-                    onChange={() => updateOrderConfig({ side: 'Sell' })}
-                  />
-                  <span className="radio-custom"></span>
-                  <span className="radio-label">Sell</span>
-                </label>
-                <label className="radio-option">
-                  <input
-                    type="radio"
-                    name="orderSide"
-                    value="Both"
-                    checked={config.orderConfig.side === 'Both'}
-                    onChange={() => updateOrderConfig({ side: 'Both' })}
-                  />
-                  <span className="radio-custom"></span>
-                  <span className="radio-label">Both</span>
-                </label>
-              </div>
-            </div>
+        <div className="form-field">
+          <label>Max Order (USD)</label>
+          <input type="number" min="0" step="0.01" value={config.positionSizing.maxOrderSizeUsd || ''} placeholder="No limit" onChange={(e) => updatePositionSizing({ maxOrderSizeUsd: e.target.value ? parseFloat(e.target.value) : undefined })} />
+        </div>
+        <div className="form-field">
+          <label>Cycle Interval (ms)</label>
+          <div className="inline-inputs">
+            <input type="number" min="1000" step="100" value={config.timing.cycleIntervalMinMs} onChange={(e) => updateTiming({ cycleIntervalMinMs: parseInt(e.target.value) || 3000 })} />
+            <span className="separator">-</span>
+            <input type="number" min="1000" step="100" value={config.timing.cycleIntervalMaxMs} onChange={(e) => updateTiming({ cycleIntervalMaxMs: parseInt(e.target.value) || 5000 })} />
+          </div>
+        </div>
+      </div>
+
+      <div className="form-divider" />
+
+      {/* Profit & Risk Settings */}
+      <div className="form-section-label">Profit & Risk</div>
+      <div className="form-row checkboxes">
+        <label className="checkbox-inline">
+          <input type="checkbox" checked={config.orderManagement.trackFillPrices} onChange={(e) => updateOrderManagement({ trackFillPrices: e.target.checked })} />
+          <span>Track Fills</span>
+        </label>
+        <label className={`checkbox-inline ${!config.orderManagement.trackFillPrices ? 'disabled' : ''}`}>
+          <input type="checkbox" checked={config.orderManagement.onlySellAboveBuyPrice} onChange={(e) => updateOrderManagement({ onlySellAboveBuyPrice: e.target.checked })} disabled={!config.orderManagement.trackFillPrices} />
+          <span>Sell Above Buy</span>
+        </label>
+        <div className="form-field compact">
+          <label>Take Profit %</label>
+          <input type="number" min="0" step="0.01" value={config.riskManagement?.takeProfitPercent ?? 0.02} onChange={(e) => updateRiskManagement({ takeProfitPercent: parseFloat(e.target.value) || 0.02 })} disabled={!config.orderManagement.onlySellAboveBuyPrice} />
+        </div>
+      </div>
+
+      <div className="form-row checkboxes">
+        <label className="checkbox-inline">
+          <input type="checkbox" checked={config.riskManagement?.stopLossEnabled ?? false} onChange={(e) => updateRiskManagement({ stopLossEnabled: e.target.checked })} />
+          <span>Stop Loss</span>
+        </label>
+        {config.riskManagement?.stopLossEnabled && (
+          <div className="form-field compact">
+            <input type="number" min="0" step="0.1" value={config.riskManagement?.stopLossPercent ?? 5} onChange={(e) => updateRiskManagement({ stopLossPercent: parseFloat(e.target.value) || 5 })} />
+            <span className="suffix">%</span>
           </div>
         )}
-        </div>
-
-      <div className="form-section">
-        <div className="section-header" onClick={() => toggleSection('sizing')}>
-          <h3>Position Sizing</h3>
-          <span className="section-toggle">{expandedSections.has('sizing') ? '−' : '+'}</span>
-        </div>
-        {expandedSections.has('sizing') && (
-          <div className="section-content">
-            <div className="form-group">
-              <label>Size Mode *</label>
-              <div className="radio-group">
-                <label className="radio-option">
-                  <input
-                    type="radio"
-                    name="sizeMode"
-                    value="percentageOfBalance"
-                    checked={config.positionSizing.sizeMode === 'percentageOfBalance'}
-                    onChange={() => updatePositionSizing({ sizeMode: 'percentageOfBalance' })}
-                  />
-                  <span className="radio-custom"></span>
-                  <span className="radio-label">% of Balance</span>
-                </label>
-                <label className="radio-option">
-                  <input
-                    type="radio"
-                    name="sizeMode"
-                    value="fixedUsd"
-                    checked={config.positionSizing.sizeMode === 'fixedUsd'}
-                    onChange={() => updatePositionSizing({ sizeMode: 'fixedUsd' })}
-                  />
-                  <span className="radio-custom"></span>
-                  <span className="radio-label">Fixed USD</span>
-                </label>
-              </div>
-            </div>
-            {config.positionSizing.sizeMode === 'percentageOfBalance' && (
-              <>
-                <div className="form-group">
-                  <label>Base Balance Percentage (%) *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={config.positionSizing.baseBalancePercentage ?? config.positionSizing.balancePercentage}
-                    onChange={(e) => updatePositionSizing({ baseBalancePercentage: parseFloat(e.target.value) || 0 })}
-                  />
-                  <small className="form-hint">Percentage of base balance to use for sell orders</small>
-                </div>
-                <div className="form-group">
-                  <label>Quote Balance Percentage (%) *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={config.positionSizing.quoteBalancePercentage ?? config.positionSizing.balancePercentage}
-                    onChange={(e) => updatePositionSizing({ quoteBalancePercentage: parseFloat(e.target.value) || 0 })}
-                  />
-                  <small className="form-hint">Percentage of quote balance to use for buy orders</small>
-                </div>
-              </>
-            )}
-            {config.positionSizing.sizeMode === 'fixedUsd' && (
-              <div className="form-group">
-                <label>Fixed USD Amount *</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={config.positionSizing.fixedUsdAmount || 0}
-                  onChange={(e) => updatePositionSizing({ fixedUsdAmount: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-            )}
-            <div className="form-group">
-              <label>Min Order Size (USD) *</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={config.positionSizing.minOrderSizeUsd}
-                onChange={(e) => updatePositionSizing({ minOrderSizeUsd: parseFloat(e.target.value) || 5 })}
-              />
-            </div>
-            <div className="form-group">
-              <label>Max Order Size (USD)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={config.positionSizing.maxOrderSizeUsd || ''}
-                onChange={(e) => updatePositionSizing({ maxOrderSizeUsd: e.target.value ? parseFloat(e.target.value) : undefined })}
-              />
-              <small className="form-hint">Optional: Cap order size at this USD value (leave empty for no limit)</small>
-            </div>
+        <label className="checkbox-inline">
+          <input type="checkbox" checked={config.riskManagement?.orderTimeoutEnabled ?? false} onChange={(e) => updateRiskManagement({ orderTimeoutEnabled: e.target.checked })} />
+          <span>Order Timeout</span>
+        </label>
+        {config.riskManagement?.orderTimeoutEnabled && (
+          <div className="form-field compact">
+            <input type="number" min="1" step="1" value={config.riskManagement?.orderTimeoutMinutes ?? 30} onChange={(e) => updateRiskManagement({ orderTimeoutMinutes: parseInt(e.target.value) || 30 })} />
+            <span className="suffix">min</span>
           </div>
         )}
       </div>
 
-      <div className="form-section">
-        <div className="section-header" onClick={() => toggleSection('management')}>
-          <h3>Order Management</h3>
-          <span className="section-toggle">{expandedSections.has('management') ? '−' : '+'}</span>
-        </div>
-        {expandedSections.has('management') && (
-          <div className="section-content">
-            <div className="form-group">
-              <label className="checkbox-option">
-                <input
-                  type="checkbox"
-                  checked={config.orderManagement.trackFillPrices}
-                  onChange={(e) => updateOrderManagement({ trackFillPrices: e.target.checked })}
-                />
-                <span className="checkbox-custom"></span>
-                <span className="checkbox-label">Track Fill Prices</span>
-              </label>
-            </div>
-            <div className="form-group">
-              <label className={`checkbox-option ${!config.orderManagement.trackFillPrices ? 'disabled' : ''}`}>
-                <input
-                  type="checkbox"
-                  checked={config.orderManagement.onlySellAboveBuyPrice}
-                  onChange={(e) => updateOrderManagement({ onlySellAboveBuyPrice: e.target.checked })}
-                  disabled={!config.orderManagement.trackFillPrices}
-                />
-                <span className="checkbox-custom"></span>
-                <span className="checkbox-label">Only Sell Above Buy Price</span>
-              </label>
-              <small>Requires fill price tracking to be enabled</small>
-            </div>
-            <div className="form-group">
-              <label>Max Open Orders (per side) *</label>
-              <input
-                type="number"
-                min="1"
-                value={config.orderManagement.maxOpenOrders}
-                onChange={(e) => updateOrderManagement({ maxOpenOrders: parseInt(e.target.value) || 2 })}
-              />
-            </div>
-            <div className="form-group">
-              <label className="checkbox-option">
-                <input
-                  type="checkbox"
-                  checked={config.orderManagement.cancelAndReplace}
-                  onChange={(e) => updateOrderManagement({ cancelAndReplace: e.target.checked })}
-                />
-                <span className="checkbox-custom"></span>
-                <span className="checkbox-label">Cancel & Replace Orders</span>
-              </label>
-              <small>Cancel existing orders before placing new ones</small>
-            </div>
+      <div className="form-row checkboxes">
+        <label className="checkbox-inline">
+          <input type="checkbox" checked={config.riskManagement?.maxDailyLossEnabled ?? false} onChange={(e) => updateRiskManagement({ maxDailyLossEnabled: e.target.checked })} />
+          <span>Max Daily Loss</span>
+        </label>
+        {config.riskManagement?.maxDailyLossEnabled && (
+          <div className="form-field compact">
+            <span className="prefix">$</span>
+            <input type="number" min="0" step="1" value={config.riskManagement?.maxDailyLossUsd ?? 100} onChange={(e) => updateRiskManagement({ maxDailyLossUsd: parseFloat(e.target.value) || 100 })} />
           </div>
         )}
-        </div>
-
-
-      <div className="form-section">
-        <div className="section-header" onClick={() => toggleSection('timing')}>
-          <h3>Timing</h3>
-          <span className="section-toggle">{expandedSections.has('timing') ? '−' : '+'}</span>
-        </div>
-        {expandedSections.has('timing') && (
-          <div className="section-content">
-            <div className="form-group">
-              <label>Min Interval (ms) *</label>
-              <input
-                type="number"
-                min="1000"
-                step="100"
-                value={config.timing.cycleIntervalMinMs}
-                onChange={(e) => updateTiming({ cycleIntervalMinMs: parseInt(e.target.value) || 3000 })}
-              />
-            </div>
-            <div className="form-group">
-              <label>Max Interval (ms) *</label>
-              <input
-                type="number"
-                min="1000"
-                step="100"
-                value={config.timing.cycleIntervalMaxMs}
-                onChange={(e) => updateTiming({ cycleIntervalMaxMs: parseInt(e.target.value) || 5000 })}
-              />
-            </div>
+        {config.dailyPnL && (
+          <div className={`pnl-badge ${config.dailyPnL.realizedPnL >= 0 ? 'positive' : 'negative'}`}>
+            P&L: {config.dailyPnL.realizedPnL >= 0 ? '+' : ''}${config.dailyPnL.realizedPnL.toFixed(2)}
           </div>
         )}
       </div>
 
-      <div className="form-actions">
-        <button onClick={onReset} className="btn btn-secondary">
-          Reset to Default
-        </button>
+      {/* Actions */}
+      <div className="form-actions compact">
+        <button type="button" onClick={onReset} className="btn btn-text">Reset</button>
         <div className="form-actions-right">
-          <button onClick={onCancel} className="btn btn-secondary">
-            Cancel
-          </button>
-          <button onClick={onSave} className="btn btn-primary">
-            Save Configuration
-          </button>
+          <button type="button" onClick={onCancel} className="btn btn-secondary">Cancel</button>
+          <button type="button" onClick={onSave} className="btn btn-primary">Save</button>
         </div>
       </div>
     </div>

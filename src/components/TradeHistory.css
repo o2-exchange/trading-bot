@@ -2,7 +2,13 @@
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 24px;
+  padding: 16px;
+}
+
+.trade-history h2 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .trade-history-header {
@@ -55,11 +61,11 @@
 }
 
 .trades-table th {
-  padding: 12px;
+  padding: 8px 10px;
   text-align: center;
   color: var(--muted-foreground);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -82,15 +88,16 @@
 }
 
 .trades-table td {
-  padding: 12px;
+  padding: 6px 10px;
   color: var(--foreground);
   text-align: center;
+  font-size: 12px;
 }
 
 .direction-badge {
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
   font-weight: 600;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
 }
@@ -116,12 +123,12 @@
 }
 
 .status-badge {
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
 }
 
 .status-badge.success {
@@ -158,7 +165,7 @@
 /* Market ID column with monospace */
 .trades-table td:nth-child(2) {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted-foreground);
 }
 
@@ -178,15 +185,15 @@
 /* Timestamp column */
 .trades-table td:first-child {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted-foreground);
 }
 
 .loading,
 .empty-state {
   text-align: center;
-  padding: 40px;
+  padding: 24px;
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: 13px;
 }
 

@@ -10,7 +10,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@fuels/connectors": "^0.9.0",
+    "@fuels/connectors": "0.45.0",
     "axios": "^1.12.2",
     "decimal.js": "^10.2.1",
     "dexie": "^4.0.1",

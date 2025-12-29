@@ -2,6 +2,7 @@ import { OrderBook } from '../types/contracts/OrderBook'
 import { o2ApiService } from './o2ApiService'
 import { sessionService } from './sessionService'
 import { sessionManagerService } from './sessionManagerService'
+import { tradingAccountService } from './tradingAccountService'
 import { encodeActions } from '../utils/o2/o2Encoders'
 import { Order, CreateOrderParams, CancelOrderParams, OrderStatus } from '../types/order'
 import { Market } from '../types/market'
@@ -33,8 +34,8 @@ class OrderService {
       throw new Error(`Market ${market.market_id} is not in session's allowed contracts`)
     }
 
-    // Get TradeAccountManager
-    const tradeAccountManager = await sessionManagerService.getTradeAccountManager(normalizedAddress)
+    // Get TradeAccountManager - fetch latest nonce from API before placing order (matching O2 frontend)
+    const tradeAccountManager = await sessionManagerService.getTradeAccountManager(normalizedAddress, true)
 
     // Create order action
     const orderAction: CreateOrderAction = {
@@ -67,6 +68,8 @@ class OrderService {
     const payload = await tradeAccountManager.api_SessionCallContractsParams(encodedActions.invokeScopes)
 
     // Submit transaction
+    // Set collect_orders to true since we need the order object back
+    // O2 frontend uses false when they don't need the order immediately, but we need it
     const response = await o2ApiService.sessionSubmitTransaction(
       {
         actions: [
@@ -86,8 +89,29 @@ class OrderService {
       normalizedAddress
     )
 
-    // Increment nonce
+    // Increment nonce in memory (for next transaction)
     tradeAccountManager.incrementNonce()
+
+    // Persist nonce to database with retry logic so next order uses correct nonce
+    const persistNonce = async (retries = 2) => {
+      const session = await sessionService.getActiveSession(normalizedAddress)
+      if (!session) return
+
+      for (let i = 1; i <= retries; i++) {
+        try {
+          await tradingAccountService.updateNonce(
+            session.tradeAccountId,
+            parseInt(tradeAccountManager.nonce.toString())
+          )
+          return
+        } catch (e) {
+          console.warn(`[OrderService] Nonce persist attempt ${i}/${retries} failed`)
+          if (i < retries) await new Promise(r => setTimeout(r, 100))
+        }
+      }
+    }
+    // Fire and forget - don't block order placement
+    persistNonce().catch(() => {})
 
     // Store order in database
     if (response.orders && response.orders.length > 0) {
@@ -114,8 +138,8 @@ class OrderService {
       throw new Error('Market not found')
     }
 
-    // Get TradeAccountManager
-    const tradeAccountManager = await sessionManagerService.getTradeAccountManager(normalizedAddress)
+    // Get TradeAccountManager - fetch latest nonce from API before canceling order (matching O2 frontend)
+    const tradeAccountManager = await sessionManagerService.getTradeAccountManager(normalizedAddress, true)
 
     // Create cancel order action
     const cancelAction: CancelOrderAction = {
@@ -235,14 +259,14 @@ class OrderService {
     return allOrders
   }
 
-  async getOrder(orderId: string, ownerAddress: string): Promise<Order | null> {
+  async getOrder(orderId: string, marketId: string, ownerAddress: string): Promise<Order | null> {
     const normalizedAddress = ownerAddress.toLowerCase()
     try {
-      const order = await o2ApiService.getOrder(orderId, normalizedAddress)
+      const order = await o2ApiService.getOrder(orderId, marketId, normalizedAddress)
       await db.orders.put(order)
       return order
     } catch (error) {
-      console.error('Failed to fetch order', error)
+      console.error(`[OrderService] Failed to fetch order ${orderId} for market ${marketId}:`, error)
       return (await db.orders.get(orderId)) || null
     }
   }

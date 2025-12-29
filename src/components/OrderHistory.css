@@ -52,16 +52,10 @@
   vertical-align: middle;
 }
 
-/* Order ID and Market ID with monospace and truncation */
-.orders-table td:first-child,
-.orders-table td:nth-child(2) {
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
-  font-size: 12px;
-  color: var(--muted-foreground);
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Market column */
+.orders-table td:first-child {
+  font-weight: 500;
+  color: var(--primary);
 }
 
 /* Side column with badge styling */
@@ -86,10 +80,10 @@
   border: 1px solid rgba(251, 146, 60, 0.3);
 }
 
-/* Numeric values with monospace font */
+/* Numeric values with monospace font (Price, Quantity, Filled) */
+.orders-table td:nth-child(3),
 .orders-table td:nth-child(4),
-.orders-table td:nth-child(5),
-.orders-table td:nth-child(6) {
+.orders-table td:nth-child(5) {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
   white-space: nowrap;
 }
@@ -137,5 +131,28 @@
   padding: 40px;
   color: var(--muted-foreground);
   font-size: 14px;
+}
+
+/* Cancel Button */
+.cancel-order-btn {
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  color: var(--destructive);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cancel-order-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.cancel-order-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 

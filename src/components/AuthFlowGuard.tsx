@@ -82,50 +82,87 @@ export default function AuthFlowGuard({ children }: AuthFlowGuardProps) {
     // If no invitation code, user can skip (will remain in queue)
   }
 
-  // Show loading state
-  if (
+  // Loading states - show spinner while authenticating
+  const isLoading =
+    authState.state === 'idle' ||
     authState.state === 'checkingSituation' ||
     authState.state === 'checkingTerms' ||
     authState.state === 'verifyingAccessQueue' ||
     authState.state === 'creatingSession'
-  ) {
+
+  if (isLoading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-        <div>
-          <p style={{ color: 'var(--foreground)' }}>Setting up trading session...</p>
-        </div>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        background: 'var(--background)',
+        gap: '16px'
+      }}>
+        <div style={{
+          width: '32px',
+          height: '32px',
+          border: '3px solid var(--border)',
+          borderTopColor: 'var(--primary)',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }} />
+        <p style={{ color: 'var(--muted-foreground)', fontSize: '14px' }}>
+          {authState.state === 'idle' ? 'Connecting...' : 'Setting up trading session...'}
+        </p>
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     )
   }
 
-  // Show error state
+  // Show error state with retry
   if (authState.state === 'error') {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-        <div>
-          <p style={{ color: 'var(--destructive)' }}>Error: {authState.error}</p>
-          <button
-            onClick={() => authFlowService.startFlow()}
-            style={{
-              marginTop: '16px',
-              padding: '12px 24px',
-              background: 'var(--primary)',
-              color: 'var(--primary-foreground)',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-            }}
-          >
-            Retry
-          </button>
-        </div>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        background: 'var(--background)',
+        gap: '12px'
+      }}>
+        <p style={{ color: 'var(--destructive)', fontSize: '14px' }}>
+          {authState.error || 'Authentication failed'}
+        </p>
+        <button
+          onClick={() => authFlowService.startFlow()}
+          style={{
+            padding: '10px 20px',
+            background: 'var(--primary)',
+            color: 'var(--primary-foreground)',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '500'
+          }}
+        >
+          Retry
+        </button>
       </div>
     )
   }
 
+  // Ready state - render children
+  if (authState.state === 'ready') {
+    return <>{children}</>
+  }
+
+  // Dialog states - show dialogs with loading background
   return (
     <>
-      {/* Show dialogs based on state */}
       <TermsOfUseDialog
         isOpen={authState.state === 'awaitingTerms'}
         onClose={handleTermsClose}
@@ -142,55 +179,14 @@ export default function AuthFlowGuard({ children }: AuthFlowGuardProps) {
         onClose={handleInvitationClose}
       />
 
-      {/* Only render children when ready */}
-      {authState.state === 'ready' ? children : (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-          <div>
-            <p style={{ color: 'var(--foreground)' }}>Completing authentication...</p>
-            {authState.error && (
-              <p style={{ color: 'var(--destructive)', marginTop: '8px', fontSize: '14px' }}>
-                {authState.error}
-              </p>
-            )}
-            <button
-              onClick={async () => {
-                const wallet = walletService.getConnectedWallet()
-                if (wallet) {
-                  // Check if session exists and force ready state
-                  const normalizedAddress = wallet.address.toLowerCase()
-                  const { sessionService } = await import('../services/sessionService')
-                  const activeSession = await sessionService.getActiveSession(normalizedAddress)
-                  if (activeSession) {
-                    // Force ready state if session exists
-                    const currentState = authFlowService.getState()
-                    if (currentState.state !== 'ready') {
-                      // Use startFlow which will detect the session
-                      await authFlowService.startFlow()
-                    }
-                  } else {
-                    // Retry auth flow
-                    authFlowService.startFlow().catch((error) => {
-                      console.error('Failed to retry auth flow', error)
-                    })
-                  }
-                }
-              }}
-              style={{
-                marginTop: '16px',
-                padding: '8px 16px',
-                background: 'var(--primary)',
-                color: 'var(--primary-foreground)',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-              }}
-            >
-              Check Session / Retry
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Background while dialogs are shown */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        background: 'var(--background)'
+      }} />
     </>
   )
 }
