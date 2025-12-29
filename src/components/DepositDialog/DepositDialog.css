@@ -139,6 +139,79 @@
   font-size: 18px;
 }
 
+/* Fuel Connector Selection */
+.fuel-connectors-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.fuel-connectors-header .wallet-select-label {
+  margin: 0;
+  flex: 1;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.fuel-connection-error {
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: var(--destructive);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.wallet-option.not-installed {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wallet-option.connecting {
+  pointer-events: none;
+}
+
+.wallet-option-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.fuel-connectors-hint {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.fuel-connectors-hint a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.fuel-connectors-hint a:hover {
+  text-decoration: underline;
+}
+
 /* Deposit Form Step */
 .deposit-form {
   display: flex;

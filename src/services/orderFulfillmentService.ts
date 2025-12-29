@@ -82,11 +82,11 @@ class OrderFulfillmentService {
 
       // Convert from scaled format to human-readable format with proper precision
       // Price is in scaled format (e.g., "1000000000" for $1000 with 6 decimals)
-      const fillPriceHuman = fillPriceScaled.div(10 ** market.quote.decimals).toFixed(market.quote.decimals)
+      const fillPriceHuman = fillPriceScaled.div(10 ** market.quote.decimals).toFixed(market.quote.decimals).replace(/\.?0+$/, '')
 
       // Also convert quantity from scaled to human-readable format with proper precision
       const fillQuantityScaled = new Decimal(fillQuantity)
-      const fillQuantityHuman = fillQuantityScaled.div(10 ** market.base.decimals).toFixed(market.base.decimals)
+      const fillQuantityHuman = fillQuantityScaled.div(10 ** market.base.decimals).toFixed(market.base.decimals).replace(/\.?0+$/, '')
       
       const fillEntry: FillPrice = {
         price: fillPriceHuman, // Store in human-readable format (actual execution price)

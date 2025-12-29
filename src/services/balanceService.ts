@@ -1,7 +1,9 @@
 import { o2ApiService } from './o2ApiService'
 import { sessionService } from './sessionService'
+import { marketService } from './marketService'
 import { Balance, BalanceApiResponse, TradingAccountBalances } from '../types/tradingAccount'
 import { Market } from '../types/market'
+import Decimal from 'decimal.js'
 
 class BalanceService {
   private balanceCache: Map<string, BalanceApiResponse> = new Map()
@@ -124,16 +126,16 @@ class BalanceService {
       try {
         const apiResponse = await this.getBalance(assetId, tradingAccountId, normalizedAddress)
         const assetInfo = assetMap.get(assetId)
-        
+
         if (assetInfo) {
           // Map API response to display format
           const totalUnlocked = BigInt(apiResponse.total_unlocked || '0')
           const totalLocked = BigInt(apiResponse.total_locked || '0')
           const tradingAccountBalance = BigInt(apiResponse.trading_account_balance || '0')
-          
+
           // Total = trading account balance + unlocked in order books
           const total = (tradingAccountBalance + totalUnlocked).toString()
-          
+
           balances.push({
             assetId,
             assetSymbol: assetInfo.symbol,
@@ -148,10 +150,41 @@ class BalanceService {
       }
     }
 
-    // Calculate total USD value (would need token prices)
+    // Calculate USD values for each balance
+    // Use unlocked + locked (what's displayed in the table) to avoid double-counting
+    for (const balance of balances) {
+      try {
+        const unlockedBig = new Decimal(balance.unlocked || '0')
+        const lockedBig = new Decimal(balance.locked || '0')
+        const displayedTotal = unlockedBig.plus(lockedBig)
+        const displayedTotalHuman = displayedTotal.div(new Decimal(10).pow(balance.decimals))
+
+        if (balance.assetSymbol === 'USDC' || balance.assetSymbol === 'USDT') {
+          // Stablecoins: 1:1 with USD
+          balance.valueUsd = displayedTotalHuman.toFixed(2)
+        } else {
+          // Find market for this asset paired with USDC (e.g., FUEL/USDC)
+          const market = markets.find(
+            m => m.base.symbol === balance.assetSymbol && m.quote.symbol === 'USDC'
+          )
+
+          if (market) {
+            const ticker = await marketService.getTicker(market.market_id)
+            if (ticker?.last_price) {
+              const priceHuman = new Decimal(ticker.last_price).div(new Decimal(10).pow(market.quote.decimals))
+              const valueUsd = displayedTotalHuman.mul(priceHuman)
+              balance.valueUsd = valueUsd.toFixed(2)
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to calculate USD value for ${balance.assetSymbol}:`, error)
+      }
+    }
+
+    // Calculate total USD value
     const totalValueUsd = balances.reduce((sum, balance) => {
-      // This is a placeholder - you'd need to fetch token prices
-      return sum
+      return sum + parseFloat(balance.valueUsd || '0')
     }, 0)
 
     return {

@@ -34,6 +34,34 @@
   letter-spacing: 0.5px;
 }
 
+.header-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.header-tabs button {
+  background: transparent;
+  border: none;
+  color: var(--muted-foreground);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.header-tabs button:hover {
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.header-tabs button.active {
+  color: var(--primary);
+  background: var(--secondary);
+}
+
 .header-actions {
   display: flex;
   align-items: center;
@@ -127,33 +155,6 @@
   color: var(--destructive);
 }
 
-.dashboard-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--card);
-}
-
-.dashboard-tabs button {
-  background: transparent;
-  border: none;
-  color: var(--muted-foreground);
-  padding: 10px 14px;
-  cursor: pointer;
-  font-size: 14px;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-}
-
-.dashboard-tabs button:hover {
-  color: var(--foreground);
-}
-
-.dashboard-tabs button.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-}
 
 .dashboard-content {
   padding: 8px 16px;
@@ -309,6 +310,25 @@
   line-height: 1.5;
 }
 
+.not-whitelisted-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--destructive);
+}
+
+.not-whitelisted-text {
+  flex: 1;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
 .trading-status-indicator {
   display: flex;
   align-items: center;
@@ -365,6 +385,21 @@
 
 .start-button:active {
   transform: translateY(0);
+}
+
+.start-button:disabled {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: none;
+}
+
+.start-button:disabled:hover {
+  transform: none;
+  box-shadow: none;
+  opacity: 0.6;
 }
 
 .stop-button {

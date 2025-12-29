@@ -60,6 +60,7 @@ export default function Balances({ balances, loading }: BalancesProps) {
             <th>Asset</th>
             <th>Available</th>
             <th>Locked</th>
+            <th>Value (USD)</th>
           </tr>
         </thead>
         <tbody>
@@ -70,9 +71,18 @@ export default function Balances({ balances, loading }: BalancesProps) {
               <td>{balance.assetSymbol}</td>
               <td className="tabular-nums">{formatBalance(balance.unlocked, balance.decimals)}</td>
               <td className="tabular-nums">{formatBalance(balance.locked, balance.decimals)}</td>
+              <td className="tabular-nums value-usd">{balance.valueUsd ? `$${balance.valueUsd}` : '—'}</td>
             </tr>
           ))}
         </tbody>
+        {balances.totalValueUsd && balances.totalValueUsd > 0 && (
+          <tfoot>
+            <tr className="total-row">
+              <td colSpan={3}>Total</td>
+              <td className="tabular-nums value-usd">${balances.totalValueUsd.toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   )

@@ -69,10 +69,6 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
           tradingEngine.initialize(normalizedAddress, account.id)
         }
 
-        // Get eligibility from auth flow state
-        const authState = authFlowService.getState()
-        setIsEligible(authState.isWhitelisted)
-
         // Fetch markets (uses cache - auth flow already fetched)
         const marketsList = await marketService.fetchMarkets()
         setMarkets(filterMarkets(marketsList))
@@ -106,11 +102,8 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     const unsubscribe = authFlowService.subscribe((state) => {
       if (state.state === 'ready') {
         loadData()
-        // Update eligibility when auth flow state changes
-        setIsEligible(state.isWhitelisted)
-      } else if (state.isWhitelisted !== null && state.isWhitelisted !== undefined) {
-        // Update eligibility even if not ready yet (e.g., during checkSituation)
-        setIsEligible(state.isWhitelisted)
+        // Update eligibility from auth flow state
+        setIsEligible(state.isWhitelisted ?? false)
       }
     })
 
@@ -118,6 +111,7 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
     const currentState = authFlowService.getState()
     if (currentState.state === 'ready') {
       loadData()
+      setIsEligible(currentState.isWhitelisted ?? false)
     }
 
     return unsubscribe
@@ -263,6 +257,26 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
       <div className="dashboard">
         <div className="dashboard-header">
           <h1>o2 Trading Bot <span className="alpha-badge">Alpha</span></h1>
+          <div className="header-tabs">
+            <button
+              className={activeTab === 'dashboard' ? 'active' : ''}
+              onClick={() => setActiveTab('dashboard')}
+            >
+              Dashboard
+            </button>
+            <button
+              className={activeTab === 'orders' ? 'active' : ''}
+              onClick={() => setActiveTab('orders')}
+            >
+              Orders
+            </button>
+            <button
+              className={activeTab === 'trades' ? 'active' : ''}
+              onClick={() => setActiveTab('trades')}
+            >
+              Trades
+            </button>
+          </div>
           <div className="header-actions">
             <button
               className="help-button"
@@ -284,27 +298,6 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
           </div>
         </div>
 
-      <div className="dashboard-tabs">
-        <button
-          className={activeTab === 'dashboard' ? 'active' : ''}
-          onClick={() => setActiveTab('dashboard')}
-        >
-          Dashboard
-        </button>
-        <button
-          className={activeTab === 'orders' ? 'active' : ''}
-          onClick={() => setActiveTab('orders')}
-        >
-          Orders
-        </button>
-        <button
-          className={activeTab === 'trades' ? 'active' : ''}
-          onClick={() => setActiveTab('trades')}
-        >
-          Trades
-        </button>
-      </div>
-
       <div className="dashboard-content">
         {/* Dashboard tab - always mounted to preserve TradeConsole state */}
         <div className="tab-panel" style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
@@ -312,11 +305,17 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
           <div className="dashboard-main">
             <div className="dashboard-left-column">
               <div className="controls-section">
-                <TradingAccount account={tradingAccount} isEligible={isEligible} />
+                <TradingAccount account={tradingAccount} />
 
                 <div className="trading-controls">
-                  <h2>Trading Controls</h2>
-                  {showStrategyRecommendation && (
+                  {isEligible === false && (
+                    <div className="not-whitelisted-banner">
+                      <span className="not-whitelisted-text">
+                        Not whitelisted to trade
+                      </span>
+                    </div>
+                  )}
+                  {showStrategyRecommendation && isEligible !== false && (
                     <div className="strategy-recommendation-banner">
                       <span className="recommendation-text">
                         No active strategy configured. Please create and activate a strategy in the Strategy Configuration section below before starting trading.
@@ -326,15 +325,27 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
                   {!isTrading ? (
                     hasResumableSession ? (
                       <div className="trading-buttons-group">
-                        <button onClick={() => handleStartTrading(true)} className="start-button resume-button">
+                        <button
+                          onClick={() => handleStartTrading(true)}
+                          className="start-button resume-button"
+                          disabled={isEligible === false}
+                        >
                           Resume Session
                         </button>
-                        <button onClick={() => handleStartTrading(false)} className="start-button new-session-button">
+                        <button
+                          onClick={() => handleStartTrading(false)}
+                          className="start-button new-session-button"
+                          disabled={isEligible === false}
+                        >
                           New Session
                         </button>
                       </div>
                     ) : (
-                      <button onClick={() => handleStartTrading(false)} className="start-button">
+                      <button
+                        onClick={() => handleStartTrading(false)}
+                        className="start-button"
+                        disabled={isEligible === false}
+                      >
                         Start Trading
                       </button>
                     )

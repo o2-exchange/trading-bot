@@ -185,8 +185,9 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
 
   return (
     <div className="competition-panel">
-      <div className="competition-header">
-        <div className="competition-title-section">
+      <div className="competition-row">
+        {/* Left: Title, subtitle, leaderboard link */}
+        <div className="competition-info">
           <div className="competition-title-row">
             <h2 className="competition-title">{activeCompetition.title}</h2>
             <span className="active-badge">Active</span>
@@ -194,48 +195,53 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
           {activeCompetition.subtitle && (
             <p className="competition-subtitle">{activeCompetition.subtitle}</p>
           )}
-          <button 
+          <button
             className="view-leaderboard-link"
             onClick={() => setIsLeaderboardOpen(true)}
           >
             View Leaderboard
           </button>
         </div>
-        <div className="competition-time">
-          <span className="time-label">Ends in:</span>
-          <span className="time-value">{timeRemaining}</span>
+
+        {/* User stats */}
+        {currentUser && (
+          <div className="competition-user-stats">
+            <div className="stat-item">
+              <span className="stat-label">Rank</span>
+              <span className="stat-value rank">#{currentUser.rank}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Score</span>
+              <span className="stat-value">{currentUser.score}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Volume</span>
+              <span className="stat-value">${formatVolume(currentUser.volume)}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">PnL</span>
+              <span className={`stat-value ${parseFloat(currentUser.pnl) >= 0 ? 'positive' : 'negative'}`}>
+                {formatPnL(currentUser.pnl)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Right side: Time remaining + Reward pool */}
+        <div className="competition-right">
+          <div className="competition-time">
+            <span className="time-label">Ends in</span>
+            <span className="time-value">{timeRemaining}</span>
+          </div>
+
+          {activeCompetition.rewardPool && (
+            <div className="competition-reward">
+              <span className="reward-label">Reward</span>
+              <span className="reward-value">{activeCompetition.rewardPool}</span>
+            </div>
+          )}
         </div>
       </div>
-
-      {currentUser && (
-        <div className="competition-user-stats">
-          <div className="stat-item">
-            <span className="stat-label">Rank</span>
-            <span className="stat-value rank">#{currentUser.rank}</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Score</span>
-            <span className="stat-value">{currentUser.score}</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Volume</span>
-            <span className="stat-value">${formatVolume(currentUser.volume)}</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">PnL</span>
-            <span className={`stat-value ${parseFloat(currentUser.pnl) >= 0 ? 'positive' : 'negative'}`}>
-              {formatPnL(currentUser.pnl)}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {activeCompetition.rewardPool && (
-        <div className="competition-reward">
-          <span className="reward-label">Reward Pool:</span>
-          <span className="reward-value">{activeCompetition.rewardPool}</span>
-        </div>
-      )}
 
       <LeaderboardModal
         isOpen={isLeaderboardOpen}

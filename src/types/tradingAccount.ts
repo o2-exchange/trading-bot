@@ -26,6 +26,7 @@ export interface Balance {
   locked: string // Locked in orders (total_locked)
   total: string // trading_account_balance + total_unlocked
   decimals: number
+  valueUsd?: string // USD value of total balance
 }
 
 export interface TradingAccountBalances {

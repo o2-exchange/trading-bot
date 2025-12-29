@@ -2,7 +2,7 @@
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   margin-bottom: 10px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
@@ -11,109 +11,138 @@
 .competition-error,
 .competition-no-active {
   text-align: center;
-  padding: 12px;
+  padding: 8px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .competition-error {
   color: var(--destructive);
 }
 
-.competition-header {
+/* Single row layout */
+.competition-row {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-  gap: 10px;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-.competition-title-section {
-  flex: 1;
+/* Competition info section */
+.competition-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .competition-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 6px;
 }
 
 .competition-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--foreground);
+  white-space: nowrap;
 }
 
 .active-badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: 2px 6px;
   background: var(--success);
   color: var(--primary-foreground);
-  border-radius: 10px;
-  font-size: 10px;
+  border-radius: 8px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .competition-subtitle {
-  margin: 0 0 4px 0;
-  font-size: 12px;
+  margin: 0;
+  font-size: 11px;
   color: var(--muted-foreground);
+  white-space: nowrap;
 }
 
+.view-leaderboard-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+
+.view-leaderboard-link:hover {
+  opacity: 0.8;
+}
+
+/* Time section */
 .competition-time {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 
 .time-label {
   font-size: 10px;
   color: var(--muted-foreground);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   font-weight: 600;
 }
 
 .time-value {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--primary);
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
 }
 
+/* User stats - inline */
 .competition-user-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 8px;
-  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 10px;
   background: var(--background);
   border: 1px solid var(--border);
   border-radius: 4px;
-  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .stat-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 4px;
 }
 
 .stat-label {
   font-size: 10px;
   color: var(--muted-foreground);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   font-weight: 600;
 }
 
 .stat-value {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--foreground);
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
@@ -131,72 +160,67 @@
   color: var(--destructive);
 }
 
+/* Right side container */
+.competition-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Reward section */
 .competition-reward {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 4px 10px;
   background: var(--muted);
   border-radius: 4px;
+  flex-shrink: 0;
 }
 
 .reward-label {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--muted-foreground);
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .reward-value {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--foreground);
 }
 
-.view-leaderboard-link {
-  background: none;
-  border: none;
-  color: var(--primary);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 0;
-  margin-top: 2px;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  transition: color 0.2s;
-}
-
-.view-leaderboard-link:hover {
-  color: var(--primary);
-  opacity: 0.8;
-}
-
-@media (max-width: 768px) {
-  .competition-header {
-    flex-direction: column;
-    align-items: flex-start;
+@media (max-width: 900px) {
+  .competition-row {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
-  .competition-time {
-    align-items: flex-start;
-    width: 100%;
+  .competition-info {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
+  .competition-right {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 600px) {
   .competition-user-stats {
-    grid-template-columns: repeat(2, 1fr);
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
-  .competition-title {
-    font-size: 16px;
+  .competition-subtitle {
+    display: none;
   }
 
-  .competition-title-row {
+  .competition-right {
     flex-wrap: wrap;
   }
-
-  .active-badge {
-    font-size: 9px;
-    padding: 2px 6px;
-  }
 }
-

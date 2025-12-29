@@ -358,13 +358,13 @@ class TradingEngine {
             const priceHuman = new Decimal(sellOrder.price).div(10 ** marketConfig.market.quote.decimals)
             const quantityHuman = new Decimal(sellOrder.quantity).div(10 ** marketConfig.market.base.decimals)
             pendingSellOrder = {
-              price: priceHuman.toFixed(2),
+              price: priceHuman.toFixed(marketConfig.market.quote.decimals).replace(/\.?0+$/, ''),
               quantity: quantityHuman.toFixed(3).replace(/\.?0+$/, '')
             }
           }
 
           const currentPrice = ticker?.last_price
-            ? new Decimal(ticker.last_price).div(10 ** marketConfig.market.quote.decimals).toFixed(2)
+            ? new Decimal(ticker.last_price).div(10 ** marketConfig.market.quote.decimals).toFixed(marketConfig.market.quote.decimals).replace(/\.?0+$/, '')
             : null
 
           const nextRunIn = marketConfig.nextRunAt ? Math.max(0, Math.round((marketConfig.nextRunAt - Date.now()) / 1000)) : 0
@@ -376,7 +376,7 @@ class TradingEngine {
             pair,
             baseBalance: `${baseBalanceHuman.toFixed(6).replace(/\.?0+$/, '')} ${marketConfig.market.base.symbol}`,
             quoteBalance: `$${quoteBalanceHuman.toFixed(2)}`,
-            lastBuyPrice: marketConfig.config.averageBuyPrice ? `$${new Decimal(marketConfig.config.averageBuyPrice).toFixed(2)}` : null,
+            lastBuyPrice: marketConfig.config.averageBuyPrice ? `$${new Decimal(marketConfig.config.averageBuyPrice).toFixed(marketConfig.market.quote.decimals).replace(/\.?0+$/, '')}` : null,
             currentPrice: currentPrice ? `$${currentPrice}` : null,
             openBuyOrders: buyOrders.length,
             openSellOrders: sellOrders.length,
@@ -507,7 +507,8 @@ class TradingEngine {
               // Format fill price if available
               let fillPriceHuman: string | null = null
               if (priceFill && priceFill !== '0') {
-                fillPriceHuman = new Decimal(priceFill).div(10 ** marketConfig.market.quote.decimals).toFixed(2)
+                // Use proper decimal precision for small prices (e.g., $0.001668 instead of $0.00)
+                fillPriceHuman = new Decimal(priceFill).div(10 ** marketConfig.market.quote.decimals).toFixed(marketConfig.market.quote.decimals).replace(/\.?0+$/, '')
               }
 
               // Format filled quantity if available
@@ -633,7 +634,7 @@ class TradingEngine {
 
                       // Emit status notification with order details
                       this.emitStatus(
-                        `${pair}: Sell ${quantityHuman.toFixed(3).replace(/\.?0+$/, '')} ${market.base.symbol} @ $${priceHuman.toFixed(2)} (limit)`,
+                        `${pair}: Sell ${quantityHuman.toFixed(3).replace(/\.?0+$/, '')} ${market.base.symbol} @ $${priceHuman.toFixed(market.quote.decimals).replace(/\.?0+$/, '')} (limit)`,
                         'success'
                       )
                     }

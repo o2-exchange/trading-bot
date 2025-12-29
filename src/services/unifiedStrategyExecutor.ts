@@ -27,24 +27,28 @@ function scaleUpAndTruncateToInt(amount: Decimal, decimals: number, maxPrecision
 }
 
 /**
- * Format price with appropriate decimal places based on value
+ * Format price with appropriate decimal places based on value, removing trailing zeros
  */
 function formatPrice(price: Decimal): string {
   const priceValue = price.toNumber()
 
   if (priceValue === 0 || isNaN(priceValue) || !isFinite(priceValue)) {
-    return '0.00'
+    return '0'
   }
 
+  let formatted: string
   if (priceValue >= 1) {
-    return priceValue.toFixed(2)
+    formatted = priceValue.toFixed(2)
   } else if (priceValue >= 0.01) {
-    return priceValue.toFixed(4)
+    formatted = priceValue.toFixed(4)
   } else if (priceValue >= 0.0001) {
-    return priceValue.toFixed(6)
+    formatted = priceValue.toFixed(6)
   } else {
-    return priceValue.toFixed(8).replace(/\.?0+$/, '')
+    formatted = priceValue.toFixed(8)
   }
+
+  // Remove trailing zeros
+  return formatted.replace(/\.?0+$/, '')
 }
 
 /**

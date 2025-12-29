@@ -6,11 +6,11 @@
 .account-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .trading-account h2 {
-  margin: 0 0 2px 0;
+  margin: 0;
   font-size: 15px;
   font-weight: 600;
   color: var(--foreground);
@@ -18,14 +18,14 @@
 
 .account-ids {
   display: flex;
-  flex-direction: column;
-  gap: 0;
+  align-items: center;
+  gap: 16px;
 }
 
 .account-id-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .account-id-label {
@@ -40,7 +40,7 @@
   gap: 3px;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
   font-size: 11px;
-  color: var(--muted-foreground);
+  color: var(--foreground);
   transition: color 0.2s;
 }
 
@@ -49,12 +49,12 @@
 }
 
 .account-id-text.clickable:hover {
-  color: var(--foreground);
+  color: var(--primary);
 }
 
 .copy-icon-inline {
   flex-shrink: 0;
-  opacity: 0.6;
+  opacity: 0.5;
   transition: opacity 0.2s, color 0.2s;
 }
 
@@ -69,49 +69,15 @@
   margin: 0;
 }
 
+@media (max-width: 600px) {
+  .account-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
 
-
-.deposit-link {
-  margin-top: 6px;
-  color: var(--primary);
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  transition: color 0.2s;
-  max-width: fit-content;
+  .account-ids {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
 }
-
-.deposit-link:hover {
-  color: var(--primary);
-  text-decoration: underline;
-}
-
-.whitelist-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border: 1px solid;
-  transition: all 0.2s ease;
-}
-
-.whitelist-badge.whitelisted {
-  background: transparent;
-  color: var(--success);
-  border-color: var(--success);
-}
-
-.whitelist-badge.not-whitelisted {
-  background: transparent;
-  color: var(--muted-foreground);
-  border-color: var(--border);
-}
-
-

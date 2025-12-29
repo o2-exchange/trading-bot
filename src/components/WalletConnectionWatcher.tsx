@@ -72,6 +72,14 @@ export function WalletConnectionWatcher() {
       if (!mounted) return
       console.log('[WalletWatcher] Fuel connection event:', isConnected)
 
+      // SMART GUARD: If user has EVM wallet as primary, don't let Fuel connections override it
+      // This allows deposit flow to connect Fuel wallet without affecting main trading wallet
+      const currentWallet = useWalletStore.getState().connectedWallet
+      if (currentWallet && currentWallet.isFuel === false) {
+        console.log('[WalletWatcher] Fuel connection detected but EVM wallet is primary - ignoring')
+        return
+      }
+
       if (isConnected) {
         // Connected - get account info
         try {
@@ -139,7 +147,12 @@ export function WalletConnectionWatcher() {
       if (!mounted) return
       console.log('[WalletWatcher] Fuel account change event')
 
+      // SMART GUARD: If user has EVM wallet as primary, don't let Fuel changes affect it
       const currentWallet = useWalletStore.getState().connectedWallet
+      if (currentWallet && currentWallet.isFuel === false) {
+        console.log('[WalletWatcher] Fuel account change detected but EVM wallet is primary - ignoring')
+        return
+      }
 
       if (!account) {
         // Account became null - user disconnected
@@ -188,6 +201,13 @@ export function WalletConnectionWatcher() {
     const handleAccountsEvent = async () => {
       if (!mounted) return
       console.log('[WalletWatcher] Fuel accounts list changed')
+
+      // SMART GUARD: If user has EVM wallet as primary, don't let Fuel changes affect it
+      const currentWallet = useWalletStore.getState().connectedWallet
+      if (currentWallet && currentWallet.isFuel === false) {
+        console.log('[WalletWatcher] Fuel accounts change detected but EVM wallet is primary - ignoring')
+        return
+      }
 
       // Re-check current account
       try {

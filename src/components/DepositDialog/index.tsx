@@ -8,8 +8,21 @@ import { fuelDepositService } from '../../services/deposit/fuelDepositService'
 import { getExplorerTxUrl, EVM_NETWORKS, FUEL_NETWORKS } from '../../constants/depositConstants'
 import type { DepositAsset, AvailableNetwork, DepositSourceType } from '../../types/deposit'
 import { getAccount } from 'wagmi/actions'
-import { wagmiConfig } from '../../services/walletService'
+import { wagmiConfig, fuel } from '../../services/walletService'
 import './DepositDialog.css'
+
+// Fuel wallet connector info
+interface FuelConnectorInfo {
+  name: string
+  icon: string
+  installed: boolean
+}
+
+const FUEL_CONNECTORS: FuelConnectorInfo[] = [
+  { name: 'Fuel Wallet', icon: '🔥', installed: false },
+  { name: 'Fuelet Wallet', icon: '⚡', installed: false },
+  { name: 'Bako Safe', icon: '🔒', installed: false },
+]
 
 interface DepositDialogProps {
   isOpen: boolean
@@ -81,8 +94,92 @@ export default function DepositDialog({ isOpen, onClose, tradingAccountId: propT
 
   const [assetDropdownOpen, setAssetDropdownOpen] = useState(false)
 
+  // Fuel wallet connector selection state
+  const [showFuelConnectors, setShowFuelConnectors] = useState(false)
+  const [fuelConnectors, setFuelConnectors] = useState<FuelConnectorInfo[]>(FUEL_CONNECTORS)
+  const [connectingFuel, setConnectingFuel] = useState<string | null>(null)
+  const [fuelConnectionError, setFuelConnectionError] = useState<string | null>(null)
+
   // Get trading account ID - prefer prop, fallback to manager
   const tradingAccountId = (propTradingAccountId as `0x${string}`) || manager?.contractId?.toB256?.() as `0x${string}` | undefined
+
+  // Check for installed Fuel connectors when showing connector selection
+  useEffect(() => {
+    if (showFuelConnectors) {
+      checkFuelConnectors()
+    }
+  }, [showFuelConnectors])
+
+  const checkFuelConnectors = async () => {
+    try {
+      // fuel.connectors() returns a Promise
+      const connectors = await fuel.connectors()
+      const updatedConnectors = await Promise.all(
+        FUEL_CONNECTORS.map(async (connector) => {
+          const fuelConnector = connectors.find(
+            (c: any) => c.name.toLowerCase().includes(connector.name.toLowerCase().split(' ')[0])
+          )
+          let installed = false
+          if (fuelConnector) {
+            try {
+              installed = await fuelConnector.ping()
+            } catch {
+              installed = false
+            }
+          }
+          return { ...connector, installed }
+        })
+      )
+      setFuelConnectors(updatedConnectors)
+    } catch (error) {
+      console.error('Error checking Fuel connectors:', error)
+    }
+  }
+
+  const handleConnectFuelWallet = async (connectorName: string) => {
+    setConnectingFuel(connectorName)
+    setFuelConnectionError(null)
+
+    try {
+      // fuel.connectors() returns a Promise
+      const connectors = await fuel.connectors()
+      const connector = connectors.find(
+        (c: any) => c.name.toLowerCase().includes(connectorName.toLowerCase().split(' ')[0])
+      )
+
+      if (!connector) {
+        throw new Error(`${connectorName} is not available. Please install the wallet extension.`)
+      }
+
+      // Check if installed
+      const isInstalled = await connector.ping()
+      if (!isInstalled) {
+        throw new Error(`${connectorName} is not installed. Please install the wallet extension.`)
+      }
+
+      // Select and connect
+      await fuel.selectConnector(connector.name)
+      await fuel.connect()
+
+      // Get the account
+      const account = await fuel.currentAccount()
+      if (!account) {
+        throw new Error('Failed to get account from wallet')
+      }
+
+      // Get address
+      const addressString = (account as any).address?.toB256?.() || (account as any).address || String(account)
+
+      // Successfully connected - proceed with deposit
+      setShowFuelConnectors(false)
+      setConnectingFuel(null)
+      selectWallet('fuel', addressString as `0x${string}`)
+    } catch (error: any) {
+      console.error('Error connecting Fuel wallet:', error)
+      setFuelConnectionError(error.message || 'Failed to connect wallet')
+      setConnectingFuel(null)
+    }
+  }
 
   // Open dialog when isOpen changes
   useEffect(() => {
@@ -96,28 +193,39 @@ export default function DepositDialog({ isOpen, onClose, tradingAccountId: propT
   // Handle close
   const handleClose = useCallback(() => {
     close()
+    setShowFuelConnectors(false)
+    setFuelConnectionError(null)
+    setConnectingFuel(null)
     onClose()
   }, [close, onClose])
 
   // Handle wallet selection
   const handleSelectWallet = useCallback(async (type: DepositSourceType) => {
-    let depositorAddress: `0x${string}` | null = null
-
     if (type === 'fuel') {
-      depositorAddress = await fuelDepositService.getCurrentAccount()
-    } else {
-      const account = await getAccount(wagmiConfig)
-      depositorAddress = account.address as `0x${string}` | null
+      // Show Fuel connector selection instead of directly getting account
+      setShowFuelConnectors(true)
+      setFuelConnectionError(null)
+      return
     }
 
+    // EVM wallet - get currently connected account
+    const account = await getAccount(wagmiConfig)
+    const depositorAddress = account.address as `0x${string}` | null
+
     if (!depositorAddress) {
-      // Could show an error or prompt to connect wallet
-      console.error('No wallet connected for', type)
+      console.error('No EVM wallet connected')
       return
     }
 
     selectWallet(type, depositorAddress)
   }, [selectWallet])
+
+  // Handle going back from Fuel connector selection
+  const handleBackFromFuelConnectors = useCallback(() => {
+    setShowFuelConnectors(false)
+    setFuelConnectionError(null)
+    setConnectingFuel(null)
+  }, [])
 
   // Handle max button
   const handleMax = useCallback(() => {
@@ -181,7 +289,7 @@ export default function DepositDialog({ isOpen, onClose, tradingAccountId: propT
           )}
 
           {/* Wallet Selection Step */}
-          {step === 'selectingWallet' && (
+          {step === 'selectingWallet' && !showFuelConnectors && (
             <div className="wallet-select-section">
               <p className="wallet-select-label">Select deposit source</p>
               <div className="wallet-options">
@@ -215,6 +323,59 @@ export default function DepositDialog({ isOpen, onClose, tradingAccountId: propT
                   <span className="wallet-option-arrow">→</span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Fuel Wallet Connector Selection */}
+          {step === 'selectingWallet' && showFuelConnectors && (
+            <div className="wallet-select-section">
+              <div className="fuel-connectors-header">
+                <button className="back-btn" onClick={handleBackFromFuelConnectors}>
+                  ← Back
+                </button>
+                <p className="wallet-select-label">Connect Fuel Wallet</p>
+              </div>
+
+              {fuelConnectionError && (
+                <div className="fuel-connection-error">
+                  {fuelConnectionError}
+                </div>
+              )}
+
+              <div className="wallet-options">
+                {fuelConnectors.map((connector) => (
+                  <div
+                    key={connector.name}
+                    className={`wallet-option ${!connector.installed ? 'not-installed' : ''} ${connectingFuel === connector.name ? 'connecting' : ''}`}
+                    onClick={() => connector.installed && !connectingFuel && handleConnectFuelWallet(connector.name)}
+                  >
+                    <div className="wallet-option-icon fuel">{connector.icon}</div>
+                    <div className="wallet-option-info">
+                      <div className="wallet-option-name">{connector.name}</div>
+                      <div className="wallet-option-desc">
+                        {connectingFuel === connector.name
+                          ? 'Connecting...'
+                          : connector.installed
+                          ? 'Click to connect'
+                          : 'Not installed'}
+                      </div>
+                    </div>
+                    {connector.installed && connectingFuel !== connector.name && (
+                      <span className="wallet-option-arrow">→</span>
+                    )}
+                    {connectingFuel === connector.name && (
+                      <div className="wallet-option-spinner" />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <p className="fuel-connectors-hint">
+                Don't have a Fuel wallet?{' '}
+                <a href="https://wallet.fuel.network/" target="_blank" rel="noopener noreferrer">
+                  Get Fuel Wallet
+                </a>
+              </p>
             </div>
           )}
 
