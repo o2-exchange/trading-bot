@@ -4,14 +4,14 @@
   align-items: center;
   justify-content: center;
   background: var(--background);
-  padding: 20px;
+  padding: 16px;
 }
 
 .wallet-connect-container {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 40px;
+  padding: 24px 32px;
   max-width: 500px;
   width: 100%;
   text-align: center;
@@ -21,12 +21,38 @@
   font-size: 32px;
   margin-bottom: 8px;
   color: var(--foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.wallet-connect-container .alpha-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--warning);
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .subtitle {
   color: var(--muted-foreground);
-  margin-bottom: 32px;
+  margin-bottom: 12px;
   font-size: 14px;
+}
+
+.warning-banner {
+  padding: 8px 14px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 12px;
+  color: #ef4444;
+  line-height: 1.4;
 }
 
 .wallet-options h2 {
@@ -44,24 +70,37 @@
 }
 
 .wallet-button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: var(--secondary);
   border: 1px solid var(--border);
   color: var(--foreground);
-  padding: 16px;
+  padding: 14px 16px;
   border-radius: 8px;
-  font-size: 16px;
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  text-align: left;
 }
 
 .wallet-button:hover:not(:disabled) {
   background: var(--muted);
-  border-color: var(--ring);
+  border-color: var(--primary);
+  transform: translateY(-1px);
 }
 
 .wallet-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.wallet-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
 }
 
 .note {
