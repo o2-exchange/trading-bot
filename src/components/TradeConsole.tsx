@@ -212,21 +212,22 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
             </div>
           )}
 
+          {/* Pending Sell Order Strip - Fixed at top */}
+          {context?.pendingSellOrder && (
+            <div className="pending-order-strip">
+              <span className="pending-strip-text">
+                Sell order waiting: {context.pendingSellOrder.quantity} {context.pair?.split('/')[0]} @ ${context.pendingSellOrder.price}
+              </span>
+              {onViewOrders && (
+                <button className="view-orders-btn" onClick={onViewOrders}>
+                  View Orders
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Console Messages */}
           <div className="trade-console-content" ref={consoleRef}>
-            {/* Pending Sell Order Strip */}
-            {context?.pendingSellOrder && (
-              <div className="pending-order-strip">
-                <span className="pending-strip-text">
-                  Sell order waiting: {context.pendingSellOrder.quantity} {context.pair?.split('/')[0]} @ ${context.pendingSellOrder.price}
-                </span>
-                {onViewOrders && (
-                  <button className="view-orders-btn" onClick={onViewOrders}>
-                    View Orders
-                  </button>
-                )}
-              </div>
-            )}
             {consoleMessages.length > 0 ? (
               consoleMessages.map((log, index) => (
                 <div key={index} className={`console-line console-${log.type}`}>

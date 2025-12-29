@@ -4,6 +4,7 @@ import { walletService } from '../services/walletService'
 import TermsOfUseDialog from './TermsOfUseDialog'
 import AccessQueueDialog from './AccessQueueDialog'
 import InvitationCodeDialog from './InvitationCodeDialog'
+import WelcomeModal from './WelcomeModal'
 import { useToast } from './ToastProvider'
 
 interface AuthFlowGuardProps {
@@ -158,6 +159,19 @@ export default function AuthFlowGuard({ children }: AuthFlowGuardProps) {
   // Ready state - render children
   if (authState.state === 'ready') {
     return <>{children}</>
+  }
+
+  // Welcome modal state - show modal over Dashboard
+  if (authState.state === 'awaitingWelcome') {
+    return (
+      <>
+        {children}
+        <WelcomeModal
+          isOpen={true}
+          onClose={() => authFlowService.dismissWelcome()}
+        />
+      </>
+    )
   }
 
   // Dialog states - show dialogs with loading background

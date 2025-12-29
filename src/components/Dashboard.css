@@ -87,6 +87,28 @@
   color: var(--foreground);
 }
 
+.help-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.help-button:hover {
+  background: var(--muted);
+  color: var(--foreground);
+  border-color: var(--primary);
+}
+
 .disconnect-button {
   background: transparent;
   border: 1px solid var(--border);

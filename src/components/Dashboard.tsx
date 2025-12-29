@@ -17,6 +17,7 @@ import TradeHistory from './TradeHistory'
 import Balances from './Balances'
 import TradeConsole from './TradeConsole'
 import CompetitionPanel from './CompetitionPanel'
+import WelcomeModal from './WelcomeModal'
 import { balanceService } from '../services/balanceService'
 import { TradingAccountBalances } from '../types/tradingAccount'
 import { filterMarkets } from '../utils/marketFilters'
@@ -38,6 +39,7 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
   const [balances, setBalances] = useState<TradingAccountBalances | null>(null)
   const [balancesLoading, setBalancesLoading] = useState(false)
   const [showStrategyRecommendation, setShowStrategyRecommendation] = useState(false)
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false)
   const { addToast } = useToast()
 
   // Fetch data when auth flow is ready (no duplicate initialization)
@@ -260,6 +262,13 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
         <div className="dashboard-header">
           <h1>o2 Trading Bot <span className="alpha-badge">Alpha</span></h1>
           <div className="header-actions">
+            <button
+              className="help-button"
+              onClick={() => setShowWelcomeModal(true)}
+              title="View tutorial"
+            >
+              ?
+            </button>
             {walletAddress && (
               <button className="wallet-chip" onClick={handleCopyAddress} title={walletAddress}>
                 <span className="wallet-dot"></span>
@@ -385,6 +394,14 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
           <TradeHistory />
         )}
       </div>
+
+      {/* Welcome Modal - can be reopened via Help button */}
+      {showWelcomeModal && (
+        <WelcomeModal
+          isOpen={true}
+          onClose={() => setShowWelcomeModal(false)}
+        />
+      )}
       </div>
     </AuthFlowGuard>
   )

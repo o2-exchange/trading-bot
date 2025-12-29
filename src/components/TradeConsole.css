@@ -169,16 +169,16 @@
   color: var(--muted-foreground);
 }
 
-/* Pending Order Strip (inside terminal) */
+/* Pending Order Strip (fixed above scrollable content) */
 .pending-order-strip {
-  padding: 6px 10px;
-  margin: -8px -12px 8px -12px;
+  padding: 6px 12px;
   background: rgba(251, 191, 36, 0.15);
   border-bottom: 1px solid rgba(251, 191, 36, 0.3);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .pending-strip-text {
