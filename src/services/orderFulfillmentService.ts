@@ -353,14 +353,6 @@ class OrderFulfillmentService {
         return null
       }
 
-      // Get current balances
-      balanceService.clearCache()
-      const balances = await balanceService.getMarketBalances(
-        market,
-        tradingAccountId,
-        ownerAddress
-      )
-
       // Get best bid from orderbook
       let bestBidPrice: Decimal | null = null
       if (orderBook.bids && orderBook.bids.length > 0 && orderBook.bids[0] && orderBook.bids[0][0]) {
@@ -426,8 +418,35 @@ class OrderFulfillmentService {
       const filledQuantityScaled = new Decimal(filledBuyOrder.filled_quantity || '0')
       const filledQuantityHuman = filledQuantityScaled.div(10 ** market.base.decimals)
 
-      // Check if we have enough base balance
-      const baseBalanceHuman = new Decimal(balances.base.unlocked).div(10 ** market.base.decimals)
+      // Wait for balance to reflect the fill (with 1.5s timeout)
+      // This handles the race condition where balance API hasn't updated yet after buy fill
+      const expectedMinBalance = filledQuantityHuman
+      const maxWaitMs = 1500 // 1.5 seconds max
+      const pollIntervalMs = 250
+
+      let balances: { base: { unlocked: string }; quote: { unlocked: string } } | null = null
+      let baseBalanceHuman = new Decimal(0)
+      const startTime = Date.now()
+
+      while (Date.now() - startTime < maxWaitMs) {
+        balanceService.clearCache()
+        balances = await balanceService.getMarketBalances(market, tradingAccountId, ownerAddress)
+        baseBalanceHuman = new Decimal(balances.base.unlocked).div(10 ** market.base.decimals)
+
+        if (baseBalanceHuman.gte(expectedMinBalance)) {
+          console.log(`[OrderFulfillmentService] Balance settled: ${baseBalanceHuman}`)
+          break
+        }
+
+        console.log(`[OrderFulfillmentService] Waiting for balance settlement... current: ${baseBalanceHuman}, expected: ${expectedMinBalance}`)
+        await new Promise(r => setTimeout(r, pollIntervalMs))
+      }
+
+      if (!balances || baseBalanceHuman.lt(expectedMinBalance)) {
+        console.log(`[OrderFulfillmentService] Balance not settled after ${maxWaitMs}ms, skipping immediate sell`)
+        return null
+      }
+
       const quantityToSell = Decimal.min(filledQuantityHuman, baseBalanceHuman)
 
       if (quantityToSell.lte(0)) {
@@ -459,15 +478,37 @@ class OrderFulfillmentService {
       // This ensures the immediate sell order uses the correct nonce
       const { sessionManagerService } = await import('./sessionManagerService')
       await sessionManagerService.getTradeAccountManager(ownerAddress, true) // refreshNonce = true
-      
-      const order = await orderService.placeOrder(
-        market,
-        OrderSide.Sell,
-        OrderType.Spot, // Always use Spot/Limit for orders that sit on the book
-        sellPriceScaled,
-        quantityScaled,
-        ownerAddress
-      )
+
+      // Place order with retry on NotEnoughBalance (handles edge cases where balance still hasn't settled)
+      const placeWithRetry = async (retries = 2, delayMs = 400): Promise<Order> => {
+        for (let i = 0; i <= retries; i++) {
+          try {
+            return await orderService.placeOrder(
+              market,
+              OrderSide.Sell,
+              OrderType.Spot, // Always use Spot/Limit for orders that sit on the book
+              sellPriceScaled,
+              quantityScaled,
+              ownerAddress
+            )
+          } catch (error: any) {
+            const errorMsg = error?.response?.data?.reason || error?.message || ''
+            if (errorMsg.includes('NotEnoughBalance') && i < retries) {
+              console.log(`[OrderFulfillmentService] NotEnoughBalance, retry ${i + 1}/${retries} in ${delayMs}ms...`)
+              await new Promise(r => setTimeout(r, delayMs))
+              delayMs *= 2 // exponential backoff
+              balanceService.clearCache()
+              // Refresh nonce before retry
+              await sessionManagerService.getTradeAccountManager(ownerAddress, true)
+              continue
+            }
+            throw error
+          }
+        }
+        throw new Error('Failed to place order after retries')
+      }
+
+      const order = await placeWithRetry()
 
       console.log('[OrderFulfillmentService] Placed immediate sell order after buy fill:', {
         orderId: order.order_id,
