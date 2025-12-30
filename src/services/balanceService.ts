@@ -8,7 +8,9 @@ import Decimal from 'decimal.js'
 class BalanceService {
   private balanceCache: Map<string, BalanceApiResponse> = new Map()
   private cacheTimestamp: Map<string, number> = new Map()
-  private readonly CACHE_TTL = 5000 // 5 seconds
+  // Reduced from 5s to 2s to avoid stale data during rapid order cycles
+  // Cycle intervals can be 3-5s, so 2s TTL ensures fresh data most of the time
+  private readonly CACHE_TTL = 2000 // 2 seconds
 
   async getBalance(
     assetId: string,

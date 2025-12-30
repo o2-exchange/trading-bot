@@ -1,14 +1,65 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Market } from '../types/market'
-import { StrategyConfigStore, StrategyConfig as StrategyConfigType, getDefaultStrategyConfig } from '../types/strategy'
+import { StrategyConfigStore, StrategyConfig as StrategyConfigType, getDefaultStrategyConfig, OrderConfig, PositionSizingConfig, OrderManagementConfig, RiskManagementConfig, TimingConfig } from '../types/strategy'
 import { db } from '../services/dbService'
 import { useToast } from './ToastProvider'
 import './StrategyConfig.css'
+
+// Export format for sharing strategies
+interface StrategyExport {
+  version: "1.0"
+  exportedAt: string
+  name?: string
+  orderConfig: OrderConfig
+  positionSizing: PositionSizingConfig
+  orderManagement: OrderManagementConfig
+  riskManagement: RiskManagementConfig
+  timing: TimingConfig
+}
 
 interface StrategyConfigProps {
   markets: Market[]
   onCreateNew?: () => void
   createNewRef?: React.MutableRefObject<(() => void) | null>
+  importRef?: React.MutableRefObject<(() => void) | null>
+}
+
+// Tooltip component for form field hints
+function Tooltip({ text, position = 'center' }: { text: string; position?: 'left' | 'center' | 'right' }) {
+  const positionClass = position === 'left' ? 'tooltip-left' : position === 'right' ? 'tooltip-right' : ''
+  return (
+    <span className={`tooltip-wrapper ${positionClass}`}>
+      <span className="tooltip-icon">?</span>
+      <span className="tooltip-content">{text}</span>
+    </span>
+  )
+}
+
+// Tooltip descriptions for each setting
+const TOOLTIPS = {
+  // Order Config
+  orderType: "Market orders execute immediately at best available price. Limit orders are placed on the orderbook and wait for a match at your specified price.",
+  priceMode: "The reference price used to calculate your order price. Mid = average of best bid/ask. Best Bid/Ask = top of orderbook. Market = last traded price.",
+  side: "Buy: Only place buy orders. Sell: Only place sell orders. Both: Place both buy and sell orders each cycle.",
+  priceOffsetPercent: "Percentage offset from reference price. For buys, adds to price (buy higher). For sells, subtracts from price (sell lower). 0% = exact reference price.",
+  maxSpreadPercent: "Maximum bid-ask spread allowed. If spread exceeds this, no orders are placed. Prevents trading in illiquid markets.",
+  maxOpenOrders: "Maximum open orders per side. E.g., 2 means max 2 buy orders + 2 sell orders at once. Prevents over-exposure.",
+
+  // Position Sizing
+  sizeMode: "% Balance: Use percentage of available balance. Fixed USD: Use fixed dollar amount per order.",
+  baseBalancePercent: "Percentage of base asset balance to use for sell orders. 100% = use entire available balance.",
+  quoteBalancePercent: "Percentage of quote asset balance to use for buy orders. 100% = use entire available balance.",
+  fixedUsdAmount: "Fixed USD value for each order. Applied to both buy and sell orders.",
+  minOrderSizeUsd: "Minimum order value in USD. Orders below this are skipped. Prevents dust orders.",
+  maxOrderSizeUsd: "Maximum order value in USD. Caps order size even if balance allows more. Leave empty for no limit.",
+  cycleInterval: "Time between order placement cycles (in milliseconds). Random interval between min and max adds unpredictability.",
+
+  // Profit & Risk
+  onlySellAboveBuyPrice: "When enabled, only places sell orders above your last buy price + take profit %. Prevents selling at a loss.",
+  takeProfitPercent: "Minimum profit margin above buy price required for sell orders. 0.02% covers round-trip fees (0.01% buy + 0.01% sell).",
+  stopLoss: "Emergency exit if price drops below your average buy price by this percentage. Cancels all orders and market sells entire position.",
+  orderTimeout: "Cancel unfilled orders after this many minutes. Useful for limit orders that don't get filled.",
+  maxDailyLoss: "Pause trading for the day if realized losses exceed this USD amount. Resets at midnight UTC.",
 }
 
 // Migration function to convert old config structure to new structure
@@ -72,11 +123,15 @@ const migrateOldConfig = (oldConfig: any): StrategyConfigType => {
     return defaultConfig
 }
 
-export default function StrategyConfig({ markets, createNewRef }: StrategyConfigProps) {
+export default function StrategyConfig({ markets, createNewRef, importRef }: StrategyConfigProps) {
   const [configs, setConfigs] = useState<StrategyConfigStore[]>([])
   const [editingConfig, setEditingConfig] = useState<StrategyConfigStore | null>(null)
   const [selectedMarket, setSelectedMarket] = useState<string>('')
   const [isCreating, setIsCreating] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importMarket, setImportMarket] = useState<string>('')
+  const [importJson, setImportJson] = useState<string>('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { addToast } = useToast()
 
   useEffect(() => {
@@ -91,6 +146,18 @@ export default function StrategyConfig({ markets, createNewRef }: StrategyConfig
     return () => {
       if (createNewRef) {
         createNewRef.current = null
+      }
+    }
+  }, [])
+
+  // Expose handleOpenImport via ref for external triggering
+  useEffect(() => {
+    if (importRef) {
+      importRef.current = handleOpenImport
+    }
+    return () => {
+      if (importRef) {
+        importRef.current = null
       }
     }
   }, [])
@@ -164,8 +231,24 @@ export default function StrategyConfig({ markets, createNewRef }: StrategyConfig
     let configToSave: StrategyConfigType
 
     if (editingConfig) {
-      // Check if market ID has changed - if so, clear fill prices
+      // Check if market ID has changed - if so, warn user and clear fill prices
       if (editingConfig.config.marketId !== selectedMarket) {
+        // Warn user that changing market will clear trading history
+        const hasHistory = editingConfig.config.averageBuyPrice ||
+          editingConfig.config.averageSellPrice ||
+          (editingConfig.config.lastFillPrices?.buy?.length ?? 0) > 0 ||
+          (editingConfig.config.lastFillPrices?.sell?.length ?? 0) > 0
+
+        if (hasHistory) {
+          const confirmed = confirm(
+            'Changing the market will permanently clear your trading history (buy/sell prices, fill data).\n\n' +
+            'This cannot be undone. Are you sure you want to continue?'
+          )
+          if (!confirmed) {
+            return
+          }
+        }
+
         // Market changed - clear fill prices and update market ID
         configToSave = {
           ...editingConfig.config,
@@ -175,6 +258,7 @@ export default function StrategyConfig({ markets, createNewRef }: StrategyConfig
           lastFillPrices: undefined,
           updatedAt: Date.now(),
         }
+        addToast('Market changed - trading history cleared', 'warning')
       } else {
         // Update existing config (same market)
         configToSave = {
@@ -240,6 +324,140 @@ export default function StrategyConfig({ markets, createNewRef }: StrategyConfig
     }
   }
 
+  // Create export data from a config
+  const createExportData = (config: StrategyConfigStore): StrategyExport => {
+    return {
+      version: "1.0",
+      exportedAt: new Date().toISOString(),
+      name: config.config.name,
+      orderConfig: config.config.orderConfig,
+      positionSizing: config.config.positionSizing,
+      orderManagement: config.config.orderManagement,
+      riskManagement: config.config.riskManagement,
+      timing: config.config.timing,
+    }
+  }
+
+  // Copy strategy to clipboard
+  const handleCopyToClipboard = async (config: StrategyConfigStore) => {
+    try {
+      const exportData = createExportData(config)
+      await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2))
+      addToast('Strategy copied to clipboard', 'success')
+    } catch (error) {
+      addToast('Failed to copy to clipboard', 'error')
+    }
+  }
+
+  // Export strategy as JSON file
+  const handleExportAsFile = (config: StrategyConfigStore) => {
+    try {
+      const exportData = createExportData(config)
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const safeName = (config.config.name || 'strategy').replace(/[^a-z0-9]/gi, '-').toLowerCase()
+      a.download = `${safeName}-${Date.now()}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      addToast('Strategy exported', 'success')
+    } catch (error) {
+      addToast('Failed to export strategy', 'error')
+    }
+  }
+
+  // Open import modal
+  const handleOpenImport = () => {
+    setImportMarket('')
+    setImportJson('')
+    setShowImportModal(true)
+  }
+
+  // Handle file upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const content = event.target?.result as string
+      setImportJson(content)
+    }
+    reader.onerror = () => {
+      addToast('Failed to read file', 'error')
+    }
+    reader.readAsText(file)
+  }
+
+  // Process and validate import
+  const handleProcessImport = () => {
+    if (!importMarket) {
+      addToast('Please select a target market', 'error')
+      return
+    }
+
+    if (!importJson.trim()) {
+      addToast('Please provide JSON data', 'error')
+      return
+    }
+
+    try {
+      const data = JSON.parse(importJson)
+
+      // Validate version and required fields
+      if (!data.orderConfig || !data.positionSizing || !data.orderManagement || !data.riskManagement || !data.timing) {
+        addToast('Invalid strategy format: missing required sections', 'error')
+        return
+      }
+
+      // Get defaults to merge with imported data
+      const defaults = getDefaultStrategyConfig(importMarket)
+
+      // Create new config by merging with defaults (handles missing optional fields)
+      const newConfig: StrategyConfigType = {
+        ...defaults,
+        name: data.name || defaults.name,
+        marketId: importMarket,
+        orderConfig: { ...defaults.orderConfig, ...data.orderConfig },
+        positionSizing: { ...defaults.positionSizing, ...data.positionSizing },
+        orderManagement: { ...defaults.orderManagement, ...data.orderManagement },
+        riskManagement: { ...defaults.riskManagement, ...data.riskManagement },
+        timing: { ...defaults.timing, ...data.timing },
+        // Clear internal state - user starts fresh
+        lastFillPrices: undefined,
+        averageBuyPrice: undefined,
+        averageSellPrice: undefined,
+        dailyPnL: undefined,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+
+      // Close import modal
+      setShowImportModal(false)
+      setImportJson('')
+      setImportMarket('')
+
+      // Open in edit mode so user can review before saving
+      setSelectedMarket(importMarket)
+      setEditingConfig({
+        id: importMarket,
+        marketId: importMarket,
+        config: newConfig,
+        isActive: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      setIsCreating(false)
+
+      addToast('Strategy imported - review and save', 'success')
+    } catch (error) {
+      addToast('Invalid JSON format', 'error')
+    }
+  }
+
   const currentConfig = editingConfig?.config || (selectedMarket ? getDefaultStrategyConfig(selectedMarket) : null)
   const showForm = isCreating || editingConfig
 
@@ -250,7 +468,29 @@ export default function StrategyConfig({ markets, createNewRef }: StrategyConfig
           <div className="config-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="config-modal-header">
               <h2>{editingConfig ? 'Edit Strategy' : 'Create New Strategy'}</h2>
-              <button className="config-modal-close" onClick={handleCancel}>×</button>
+              <div className="config-modal-header-actions">
+                {editingConfig && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyToClipboard(editingConfig)}
+                      className="btn-export"
+                      title="Copy strategy JSON to clipboard"
+                    >
+                      Copy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportAsFile(editingConfig)}
+                      className="btn-export"
+                      title="Export as JSON file"
+                    >
+                      Export
+                    </button>
+                  </>
+                )}
+                <button className="config-modal-close" onClick={handleCancel}>×</button>
+              </div>
             </div>
             <div className="config-modal-body">
               {currentConfig ? (
@@ -340,9 +580,14 @@ export default function StrategyConfig({ markets, createNewRef }: StrategyConfig
         {configs.length === 0 ? (
           <div className="empty-state">
             <p>No strategy configurations</p>
-            <button onClick={handleCreateNew} className="btn btn-primary">
-              Create Strategy
-            </button>
+            <div className="empty-state-actions">
+              <button onClick={handleCreateNew} className="btn btn-primary">
+                Create Strategy
+              </button>
+              <button onClick={handleOpenImport} className="btn btn-secondary">
+                Import
+              </button>
+            </div>
           </div>
         ) : (
           <div className="configs-grid">
@@ -433,6 +678,78 @@ export default function StrategyConfig({ markets, createNewRef }: StrategyConfig
           </div>
         )}
       </div>
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="config-modal-overlay" onClick={() => setShowImportModal(false)}>
+          <div className="config-modal-content import-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="config-modal-header">
+              <h2>Import Strategy</h2>
+              <button className="config-modal-close" onClick={() => setShowImportModal(false)}>×</button>
+            </div>
+            <div className="config-modal-body">
+              <div className="form-group">
+                <label>Target Market *</label>
+                <div className="select-wrapper">
+                  <select
+                    value={importMarket}
+                    onChange={(e) => setImportMarket(e.target.value)}
+                    required
+                  >
+                    <option value="">Select a market</option>
+                    {markets.map((market) => (
+                      <option key={market.market_id} value={market.market_id}>
+                        {market.base.symbol}/{market.quote.symbol}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <small>The imported strategy will be applied to this market</small>
+              </div>
+
+              <div className="import-divider">
+                <span>Upload file</span>
+              </div>
+
+              <div className="form-group">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".json"
+                  onChange={handleFileUpload}
+                  className="file-input"
+                />
+              </div>
+
+              <div className="import-divider">
+                <span>Or paste JSON</span>
+              </div>
+
+              <div className="form-group">
+                <textarea
+                  className="import-textarea"
+                  value={importJson}
+                  onChange={(e) => setImportJson(e.target.value)}
+                  placeholder='{"version": "1.0", "orderConfig": {...}, ...}'
+                  rows={8}
+                />
+              </div>
+
+              <div className="form-actions">
+                <div></div>
+                <div className="form-actions-right">
+                  <button type="button" onClick={() => setShowImportModal(false)} className="btn btn-secondary">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={handleProcessImport} className="btn btn-primary">
+                    Import
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -543,16 +860,16 @@ function StrategyConfigForm({
       {/* Row 2: Order Type, Price Mode, Side */}
       <div className="form-row">
         <div className="form-field">
-          <label>Order Type</label>
+          <label className="label-with-tooltip">Order Type <Tooltip text={TOOLTIPS.orderType} position="left" /></label>
           <div className="select-wrapper">
             <select value={config.orderConfig.orderType} onChange={(e) => updateOrderConfig({ orderType: e.target.value as any })}>
               <option value="Market">Market</option>
-              <option value="Spot">Spot</option>
+              <option value="Spot">Limit</option>
             </select>
           </div>
         </div>
         <div className="form-field">
-          <label>Price Mode</label>
+          <label className="label-with-tooltip">Price Mode <Tooltip text={TOOLTIPS.priceMode} /></label>
           <div className="select-wrapper">
             <select value={config.orderConfig.priceMode} onChange={(e) => updateOrderConfig({ priceMode: e.target.value as any })}>
               <option value="offsetFromMid">Mid Price</option>
@@ -563,7 +880,7 @@ function StrategyConfigForm({
           </div>
         </div>
         <div className="form-field">
-          <label>Side</label>
+          <label className="label-with-tooltip">Side <Tooltip text={TOOLTIPS.side} position="right" /></label>
           <div className="btn-group">
             <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Buy' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Buy' })}>Buy</button>
             <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Sell' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Sell' })}>Sell</button>
@@ -575,16 +892,48 @@ function StrategyConfigForm({
       {/* Row 3: Price Offset, Max Spread */}
       <div className="form-row">
         <div className="form-field">
-          <label>Price Offset %</label>
-          <input type="number" step="0.01" value={config.orderConfig.priceOffsetPercent} onChange={(e) => updateOrderConfig({ priceOffsetPercent: parseFloat(e.target.value) || 0 })} />
+          <label className="label-with-tooltip">Price Offset % <Tooltip text={TOOLTIPS.priceOffsetPercent} position="left" /></label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max="50"
+            value={config.orderConfig.priceOffsetPercent}
+            onChange={(e) => {
+              const value = parseFloat(e.target.value) || 0
+              // Clamp to safe range: 0-50% (negative would buy high/sell low)
+              updateOrderConfig({ priceOffsetPercent: Math.max(0, Math.min(50, value)) })
+            }}
+          />
         </div>
         <div className="form-field">
-          <label>Max Spread %</label>
-          <input type="number" step="0.1" value={config.orderConfig.maxSpreadPercent} onChange={(e) => updateOrderConfig({ maxSpreadPercent: parseFloat(e.target.value) || 0 })} />
+          <label className="label-with-tooltip">Max Spread % <Tooltip text={TOOLTIPS.maxSpreadPercent} /></label>
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            value={config.orderConfig.maxSpreadPercent}
+            onChange={(e) => {
+              const value = parseFloat(e.target.value) || 0
+              // Clamp to safe range: 0-100%
+              updateOrderConfig({ maxSpreadPercent: Math.max(0, Math.min(100, value)) })
+            }}
+          />
         </div>
         <div className="form-field">
-          <label>Max Open Orders</label>
-          <input type="number" min="1" value={config.orderManagement.maxOpenOrders} onChange={(e) => updateOrderManagement({ maxOpenOrders: parseInt(e.target.value) || 2 })} />
+          <label className="label-with-tooltip">Max Open Orders <Tooltip text={TOOLTIPS.maxOpenOrders} position="right" /></label>
+          <input
+            type="number"
+            min="1"
+            max="50"
+            value={config.orderManagement.maxOpenOrders}
+            onChange={(e) => {
+              const value = parseInt(e.target.value) || 2
+              // Clamp to safe range: 1-50
+              updateOrderManagement({ maxOpenOrders: Math.max(1, Math.min(50, value)) })
+            }}
+          />
         </div>
       </div>
 
@@ -594,7 +943,7 @@ function StrategyConfigForm({
       <div className="form-section-label">Position Sizing</div>
       <div className="form-row">
         <div className="form-field">
-          <label>Size Mode</label>
+          <label className="label-with-tooltip">Size Mode <Tooltip text={TOOLTIPS.sizeMode} position="left" /></label>
           <div className="btn-group">
             <button type="button" className={`btn-toggle ${config.positionSizing.sizeMode === 'percentageOfBalance' ? 'active' : ''}`} onClick={() => updatePositionSizing({ sizeMode: 'percentageOfBalance' })}>% Balance</button>
             <button type="button" className={`btn-toggle ${config.positionSizing.sizeMode === 'fixedUsd' ? 'active' : ''}`} onClick={() => updatePositionSizing({ sizeMode: 'fixedUsd' })}>Fixed USD</button>
@@ -603,17 +952,17 @@ function StrategyConfigForm({
         {config.positionSizing.sizeMode === 'percentageOfBalance' ? (
           <>
             <div className="form-field">
-              <label>{markets.find(m => m.market_id === selectedMarket)?.base.symbol || 'Base'} Balance %</label>
+              <label className="label-with-tooltip">{markets.find(m => m.market_id === selectedMarket)?.base.symbol || 'Base'} Balance % <Tooltip text={TOOLTIPS.baseBalancePercent} /></label>
               <input type="number" min="0" max="100" step="1" value={config.positionSizing.baseBalancePercentage ?? config.positionSizing.balancePercentage} onChange={(e) => updatePositionSizing({ baseBalancePercentage: parseFloat(e.target.value) || 0 })} />
             </div>
             <div className="form-field">
-              <label>{markets.find(m => m.market_id === selectedMarket)?.quote.symbol || 'Quote'} Balance %</label>
+              <label className="label-with-tooltip">{markets.find(m => m.market_id === selectedMarket)?.quote.symbol || 'Quote'} Balance % <Tooltip text={TOOLTIPS.quoteBalancePercent} position="right" /></label>
               <input type="number" min="0" max="100" step="1" value={config.positionSizing.quoteBalancePercentage ?? config.positionSizing.balancePercentage} onChange={(e) => updatePositionSizing({ quoteBalancePercentage: parseFloat(e.target.value) || 0 })} />
             </div>
           </>
         ) : (
           <div className="form-field flex-2">
-            <label>Fixed Amount (USD)</label>
+            <label className="label-with-tooltip">Fixed Amount (USD) <Tooltip text={TOOLTIPS.fixedUsdAmount} /></label>
             <input type="number" min="0" step="0.01" value={config.positionSizing.fixedUsdAmount || 0} onChange={(e) => updatePositionSizing({ fixedUsdAmount: parseFloat(e.target.value) || 0 })} />
           </div>
         )}
@@ -621,15 +970,15 @@ function StrategyConfigForm({
 
       <div className="form-row">
         <div className="form-field">
-          <label>Min Order (USD)</label>
+          <label className="label-with-tooltip">Min Order (USD) <Tooltip text={TOOLTIPS.minOrderSizeUsd} position="left" /></label>
           <input type="number" min="0" step="0.01" value={config.positionSizing.minOrderSizeUsd} onChange={(e) => updatePositionSizing({ minOrderSizeUsd: parseFloat(e.target.value) || 5 })} />
         </div>
         <div className="form-field">
-          <label>Max Order (USD)</label>
+          <label className="label-with-tooltip">Max Order (USD) <Tooltip text={TOOLTIPS.maxOrderSizeUsd} /></label>
           <input type="number" min="0" step="0.01" value={config.positionSizing.maxOrderSizeUsd || ''} placeholder="No limit" onChange={(e) => updatePositionSizing({ maxOrderSizeUsd: e.target.value ? parseFloat(e.target.value) : undefined })} />
         </div>
         <div className="form-field">
-          <label>Cycle Interval (ms)</label>
+          <label className="label-with-tooltip">Cycle Interval (ms) <Tooltip text={TOOLTIPS.cycleInterval} position="right" /></label>
           <div className="inline-inputs">
             <input type="number" min="1000" step="100" value={config.timing.cycleIntervalMinMs} onChange={(e) => updateTiming({ cycleIntervalMinMs: parseInt(e.target.value) || 3000 })} />
             <span className="separator">-</span>
@@ -644,15 +993,11 @@ function StrategyConfigForm({
       <div className="form-section-label">Profit & Risk</div>
       <div className="form-row checkboxes">
         <label className="checkbox-inline">
-          <input type="checkbox" checked={config.orderManagement.trackFillPrices} onChange={(e) => updateOrderManagement({ trackFillPrices: e.target.checked })} />
-          <span>Track Fills</span>
-        </label>
-        <label className={`checkbox-inline ${!config.orderManagement.trackFillPrices ? 'disabled' : ''}`}>
-          <input type="checkbox" checked={config.orderManagement.onlySellAboveBuyPrice} onChange={(e) => updateOrderManagement({ onlySellAboveBuyPrice: e.target.checked })} disabled={!config.orderManagement.trackFillPrices} />
-          <span>Sell Above Buy</span>
+          <input type="checkbox" checked={config.orderManagement.onlySellAboveBuyPrice} onChange={(e) => updateOrderManagement({ onlySellAboveBuyPrice: e.target.checked })} />
+          <span className="label-with-tooltip">Sell Above Buy <Tooltip text={TOOLTIPS.onlySellAboveBuyPrice} position="left" /></span>
         </label>
         <div className="form-field compact">
-          <label>Take Profit %</label>
+          <label className="label-with-tooltip">Take Profit % <Tooltip text={TOOLTIPS.takeProfitPercent} /></label>
           <input type="number" min="0" step="0.01" value={config.riskManagement?.takeProfitPercent ?? 0.02} onChange={(e) => updateRiskManagement({ takeProfitPercent: parseFloat(e.target.value) || 0.02 })} disabled={!config.orderManagement.onlySellAboveBuyPrice} />
         </div>
       </div>
@@ -660,21 +1005,43 @@ function StrategyConfigForm({
       <div className="form-row checkboxes">
         <label className="checkbox-inline">
           <input type="checkbox" checked={config.riskManagement?.stopLossEnabled ?? false} onChange={(e) => updateRiskManagement({ stopLossEnabled: e.target.checked })} />
-          <span>Stop Loss</span>
+          <span className="label-with-tooltip">Stop Loss <Tooltip text={TOOLTIPS.stopLoss} position="left" /></span>
         </label>
         {config.riskManagement?.stopLossEnabled && (
           <div className="form-field compact">
-            <input type="number" min="0" step="0.1" value={config.riskManagement?.stopLossPercent ?? 5} onChange={(e) => updateRiskManagement({ stopLossPercent: parseFloat(e.target.value) || 5 })} />
+            <input
+              type="number"
+              min="0.1"
+              max="100"
+              step="0.1"
+              value={config.riskManagement?.stopLossPercent ?? 5}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value) || 5
+                // Clamp to safe range: 0.1-100% (must be positive)
+                updateRiskManagement({ stopLossPercent: Math.max(0.1, Math.min(100, value)) })
+              }}
+            />
             <span className="suffix">%</span>
           </div>
         )}
         <label className="checkbox-inline">
           <input type="checkbox" checked={config.riskManagement?.orderTimeoutEnabled ?? false} onChange={(e) => updateRiskManagement({ orderTimeoutEnabled: e.target.checked })} />
-          <span>Order Timeout</span>
+          <span className="label-with-tooltip">Order Timeout <Tooltip text={TOOLTIPS.orderTimeout} /></span>
         </label>
         {config.riskManagement?.orderTimeoutEnabled && (
           <div className="form-field compact">
-            <input type="number" min="1" step="1" value={config.riskManagement?.orderTimeoutMinutes ?? 30} onChange={(e) => updateRiskManagement({ orderTimeoutMinutes: parseInt(e.target.value) || 30 })} />
+            <input
+              type="number"
+              min="1"
+              max="1440"
+              step="1"
+              value={config.riskManagement?.orderTimeoutMinutes ?? 30}
+              onChange={(e) => {
+                const value = parseInt(e.target.value) || 30
+                // Clamp to safe range: 1-1440 minutes (max 24 hours)
+                updateRiskManagement({ orderTimeoutMinutes: Math.max(1, Math.min(1440, value)) })
+              }}
+            />
             <span className="suffix">min</span>
           </div>
         )}
@@ -683,7 +1050,7 @@ function StrategyConfigForm({
       <div className="form-row checkboxes">
         <label className="checkbox-inline">
           <input type="checkbox" checked={config.riskManagement?.maxDailyLossEnabled ?? false} onChange={(e) => updateRiskManagement({ maxDailyLossEnabled: e.target.checked })} />
-          <span>Max Daily Loss</span>
+          <span className="label-with-tooltip">Max Daily Loss <Tooltip text={TOOLTIPS.maxDailyLoss} position="left" /></span>
         </label>
         {config.riskManagement?.maxDailyLossEnabled && (
           <div className="form-field compact">

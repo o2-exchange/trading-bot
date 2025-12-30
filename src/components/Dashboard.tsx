@@ -44,6 +44,7 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
   const [showDepositDialog, setShowDepositDialog] = useState(false)
   const { addToast } = useToast()
   const strategyCreateNewRef = useRef<(() => void) | null>(null)
+  const strategyImportRef = useRef<(() => void) | null>(null)
 
   // Fetch data when auth flow is ready (no duplicate initialization)
   useEffect(() => {
@@ -391,15 +392,23 @@ export default function Dashboard({ onDisconnect }: DashboardProps) {
               <div className="strategy-settings-section">
                 <div className="section-header">
                   <h2>Strategy Configuration</h2>
-                  <button
-                    className="create-strategy-button"
-                    onClick={() => strategyCreateNewRef.current?.()}
-                  >
-                    Create New Strategy
-                  </button>
+                  <div className="section-header-actions">
+                    <button
+                      className="import-strategy-button"
+                      onClick={() => strategyImportRef.current?.()}
+                    >
+                      Import Strategy
+                    </button>
+                    <button
+                      className="create-strategy-button"
+                      onClick={() => strategyCreateNewRef.current?.()}
+                    >
+                      Create New Strategy
+                    </button>
+                  </div>
                 </div>
                 <div className="section-content">
-                  <StrategyConfig markets={markets} createNewRef={strategyCreateNewRef} />
+                  <StrategyConfig markets={markets} createNewRef={strategyCreateNewRef} importRef={strategyImportRef} />
                 </div>
               </div>
             </div>

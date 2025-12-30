@@ -193,10 +193,17 @@ class UnifiedStrategyExecutor {
       })
 
       // 5. Clear the average buy price since we've exited the position
-      // This prevents the stop loss from triggering again
+      // This prevents the stop loss from triggering again on the next cycle
+      // NOTE: For market orders, execution is immediate on O2. If there's a partial fill,
+      // the next cycle will detect remaining balance and potentially trigger stop loss again,
+      // but without averageBuyPrice it won't calculate loss % (which is acceptable for stop loss recovery)
       const updatedConfig = { ...config }
       updatedConfig.averageBuyPrice = '0'
-      updatedConfig.lastFillPrices = { buy: [], sell: [] }
+      // Keep lastFillPrices for historical tracking, just clear buy prices for stop loss
+      updatedConfig.lastFillPrices = {
+        buy: [], // Clear buy history since position is exited
+        sell: config.lastFillPrices?.sell || [] // Keep sell history for reference
+      }
       await db.strategyConfigs.update(market.market_id, { config: updatedConfig })
       console.log('[UnifiedStrategyExecutor] Stop loss: Cleared average buy price')
 

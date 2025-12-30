@@ -32,15 +32,94 @@ function scaleUpAndTruncateToInt(amount: Decimal, decimals: number, maxPrecision
 }
 
 class OrderFulfillmentService {
-  // Track processed fills to prevent duplicate counting
+  // In-memory cache of processed fills (synced with database)
   // Maps order_id -> last processed filled_quantity
-  private processedFills: Map<string, string> = new Map()
+  private processedFillsCache: Map<string, string> = new Map()
+  // Track which markets have had their fills loaded from database
+  private loadedMarkets: Set<string> = new Set()
+
+  /**
+   * Load processed fills from database into cache for a specific market
+   */
+  private async loadProcessedFillsFromDb(marketId: string): Promise<void> {
+    // Skip if already loaded for this market
+    if (this.loadedMarkets.has(marketId)) {
+      return
+    }
+
+    try {
+      const fills = await db.processedFills.where('marketId').equals(marketId).toArray()
+      for (const fill of fills) {
+        this.processedFillsCache.set(fill.orderId, fill.filledQuantity)
+      }
+      this.loadedMarkets.add(marketId)
+    } catch (error) {
+      console.error('[OrderFulfillmentService] Failed to load processed fills from database:', error)
+    }
+  }
+
+  /**
+   * Get processed fill quantity from cache (with db fallback)
+   */
+  private async getProcessedFill(orderId: string, marketId: string): Promise<string> {
+    // Check cache first
+    if (this.processedFillsCache.has(orderId)) {
+      return this.processedFillsCache.get(orderId)!
+    }
+
+    // If cache miss, try database
+    try {
+      const fill = await db.processedFills.get(orderId)
+      if (fill) {
+        this.processedFillsCache.set(orderId, fill.filledQuantity)
+        return fill.filledQuantity
+      }
+    } catch (error) {
+      console.error('[OrderFulfillmentService] Failed to get processed fill from database:', error)
+    }
+
+    return '0'
+  }
+
+  /**
+   * Update processed fill in both cache and database
+   */
+  private async updateProcessedFill(orderId: string, filledQuantity: string, marketId: string): Promise<void> {
+    // Update cache
+    this.processedFillsCache.set(orderId, filledQuantity)
+
+    // Persist to database
+    try {
+      await db.processedFills.put({
+        orderId,
+        filledQuantity,
+        marketId,
+        updatedAt: Date.now()
+      })
+    } catch (error) {
+      console.error('[OrderFulfillmentService] Failed to persist processed fill to database:', error)
+    }
+  }
 
   /**
    * Clear processed fills tracking (call when stopping trading or resetting)
    */
   clearProcessedFills(): void {
-    this.processedFills.clear()
+    this.processedFillsCache.clear()
+    this.loadedMarkets.clear()
+  }
+
+  /**
+   * Clear old processed fills from database (older than 24 hours)
+   */
+  async cleanupOldProcessedFills(): Promise<void> {
+    try {
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000 // 24 hours ago
+      await db.processedFills.where('updatedAt').below(cutoff).delete()
+      console.log('[OrderFulfillmentService] Cleaned up old processed fills')
+    } catch (error) {
+      console.error('[OrderFulfillmentService] Failed to cleanup old processed fills:', error)
+    }
   }
 
   /**
@@ -282,49 +361,63 @@ class OrderFulfillmentService {
         ownerAddress
       )
 
-      // Use takeProfitPercent from config, default to 0.02% (round-trip fees: 0.01% buy + 0.01% sell)
-      const takeProfitRate = (configToUse.riskManagement?.takeProfitPercent ?? 0.02) / 100
-
-      // Calculate minimum profitable sell price: lastBuyPrice * (1 + take profit rate)
-      let minProfitablePrice: Decimal | null = null
-      if (configToUse.averageBuyPrice && configToUse.averageBuyPrice !== '0') {
-        const lastBuyPriceDecimal = new Decimal(configToUse.averageBuyPrice)
-        minProfitablePrice = lastBuyPriceDecimal.mul(1 + takeProfitRate)
-      }
-
       // Get best bid from orderbook
       let bestBidPrice: Decimal | null = null
       if (orderBook.bids && orderBook.bids.length > 0 && orderBook.bids[0] && orderBook.bids[0][0]) {
         bestBidPrice = new Decimal(orderBook.bids[0][0]).div(10 ** market.quote.decimals)
       }
 
-      // Determine sell price
+      // Determine sell price based on whether profit protection is enabled
       let sellPrice: Decimal
-      if (minProfitablePrice) {
-        if (bestBidPrice && bestBidPrice.gte(minProfitablePrice)) {
-          // Use best bid price if it's profitable (or equal to minimum)
-          sellPrice = bestBidPrice
-          console.log('[OrderFulfillmentService] Using best bid price for immediate sell order:', {
-            bestBidPrice: bestBidPrice.toString(),
-            minProfitablePrice: minProfitablePrice.toString(),
-            lastBuyPrice: configToUse.averageBuyPrice
-          })
+
+      if (configToUse.orderManagement.onlySellAboveBuyPrice) {
+        // Profit protection is enabled - use minimum profitable price logic
+        const takeProfitRate = (configToUse.riskManagement?.takeProfitPercent ?? 0.02) / 100
+
+        // Calculate minimum profitable sell price: lastBuyPrice * (1 + take profit rate)
+        let minProfitablePrice: Decimal | null = null
+        if (configToUse.averageBuyPrice && configToUse.averageBuyPrice !== '0') {
+          const lastBuyPriceDecimal = new Decimal(configToUse.averageBuyPrice)
+          minProfitablePrice = lastBuyPriceDecimal.mul(1 + takeProfitRate)
+        }
+
+        if (minProfitablePrice) {
+          if (bestBidPrice && bestBidPrice.gte(minProfitablePrice)) {
+            // Use best bid price if it's profitable (or equal to minimum)
+            sellPrice = bestBidPrice
+            console.log('[OrderFulfillmentService] Using best bid price for immediate sell order (profit protection enabled):', {
+              bestBidPrice: bestBidPrice.toString(),
+              minProfitablePrice: minProfitablePrice.toString(),
+              lastBuyPrice: configToUse.averageBuyPrice
+            })
+          } else {
+            // Use minimum profitable price (either no best bid or best bid is below minimum)
+            sellPrice = minProfitablePrice
+            console.log('[OrderFulfillmentService] Using minimum profitable price for immediate sell order:', {
+              minProfitablePrice: minProfitablePrice.toString(),
+              bestBidPrice: bestBidPrice?.toString() || 'not available',
+              lastBuyPrice: configToUse.averageBuyPrice
+            })
+          }
         } else {
-          // Use minimum profitable price (either no best bid or best bid is below minimum)
-          // Always allow placing orders at minimum profitable price
-          sellPrice = minProfitablePrice
-          console.log('[OrderFulfillmentService] Using minimum profitable price for immediate sell order:', {
-            minProfitablePrice: minProfitablePrice.toString(),
-            bestBidPrice: bestBidPrice?.toString() || 'not available',
-            lastBuyPrice: configToUse.averageBuyPrice
-          })
+          // No average buy price tracked yet, use best bid if available, otherwise skip
+          if (bestBidPrice) {
+            sellPrice = bestBidPrice
+          } else {
+            console.log('[OrderFulfillmentService] No average buy price or best bid available, skipping immediate sell placement')
+            return null
+          }
         }
       } else {
-        // No average buy price tracked yet, use best bid if available, otherwise skip
+        // Profit protection is disabled - just use best bid (market price)
         if (bestBidPrice) {
           sellPrice = bestBidPrice
+          console.log('[OrderFulfillmentService] Using best bid price for immediate sell order (profit protection disabled):', {
+            bestBidPrice: bestBidPrice.toString(),
+            onlySellAboveBuyPrice: false
+          })
         } else {
-          console.log('[OrderFulfillmentService] No average buy price or best bid available, skipping immediate sell placement')
+          console.log('[OrderFulfillmentService] No best bid available, skipping immediate sell placement')
           return null
         }
       }
@@ -381,7 +474,7 @@ class OrderFulfillmentService {
         sellPrice: sellPrice.toString(),
         quantity: quantityRounded.toString(),
         lastBuyPrice: configToUse.averageBuyPrice,
-        minProfitablePrice: minProfitablePrice?.toString(),
+        onlySellAboveBuyPrice: configToUse.orderManagement.onlySellAboveBuyPrice,
         bestBidPrice: bestBidPrice?.toString()
       })
 
@@ -399,16 +492,20 @@ class OrderFulfillmentService {
 
   /**
    * Track order fills by comparing current order state with previous state
+   * Uses database-persisted fill tracking to survive restarts
    */
   async trackOrderFills(
     marketId: string,
     ownerAddress: string
   ): Promise<Map<string, { order: Order; previousFilledQuantity: string }>> {
     const normalizedAddress = ownerAddress.toLowerCase()
-    
+
+    // Load processed fills from database into cache for this market if not already loaded
+    await this.loadProcessedFillsFromDb(marketId)
+
     // Get current open orders
     const currentOrders = await orderService.getOpenOrders(marketId, normalizedAddress)
-    
+
     // Get previous order states from database
     // Query ALL orders created within the last 30 seconds (using created_at) to catch immediately filled orders
     // Also include orders that are Open or PartiallyFilled (regardless of when created)
@@ -422,8 +519,8 @@ class OrderFulfillmentService {
         return isOpenOrPartiallyFilled || isRecentlyCreated
       })
       .toArray()
-    
-    const previousOrders = allRecentOrders.filter(o => 
+
+    const previousOrders = allRecentOrders.filter(o =>
       o.status === OrderStatus.Open || o.status === OrderStatus.PartiallyFilled
     )
 
@@ -443,13 +540,13 @@ class OrderFulfillmentService {
             order: currentOrder,
             previousFilledQuantity: previousOrder.filled_quantity || '0',
           })
-          // Update tracking
-          this.processedFills.set(currentOrder.order_id, currentOrder.filled_quantity || '0')
+          // Update tracking (persists to database)
+          await this.updateProcessedFill(currentOrder.order_id, currentOrder.filled_quantity || '0', marketId)
         }
       } else {
         // New order, check if it has any fills (also check our tracking to avoid duplicates)
         const currentFilled = new Decimal(currentOrder.filled_quantity || '0')
-        const lastProcessedFill = this.processedFills.get(currentOrder.order_id) || '0'
+        const lastProcessedFill = await this.getProcessedFill(currentOrder.order_id, marketId)
         const previousFilled = new Decimal(lastProcessedFill)
 
         if (currentFilled.gt(previousFilled)) {
@@ -457,8 +554,8 @@ class OrderFulfillmentService {
             order: currentOrder,
             previousFilledQuantity: lastProcessedFill,
           })
-          // Update tracking
-          this.processedFills.set(currentOrder.order_id, currentOrder.filled_quantity || '0')
+          // Update tracking (persists to database)
+          await this.updateProcessedFill(currentOrder.order_id, currentOrder.filled_quantity || '0', marketId)
         }
       }
     }
@@ -479,13 +576,13 @@ class OrderFulfillmentService {
               order: updatedOrder,
               previousFilledQuantity: previousOrder.filled_quantity || '0',
             })
-            // Update tracking
-            this.processedFills.set(updatedOrder.order_id, updatedOrder.filled_quantity || '0')
+            // Update tracking (persists to database)
+            await this.updateProcessedFill(updatedOrder.order_id, updatedOrder.filled_quantity || '0', marketId)
           }
         }
       }
     }
-    
+
     // Also check recently created orders that might have filled immediately
     // These are orders that were created in the last 30 seconds but aren't in previousOrders
     // This handles the case where an order is placed and immediately fills, so it never appears
@@ -501,7 +598,7 @@ class OrderFulfillmentService {
       const currentFilled = new Decimal(recentOrder.filled_quantity || '0')
 
       // Use tracked fill amount if we've already processed this order, otherwise '0'
-      const lastProcessedFill = this.processedFills.get(recentOrder.order_id) || '0'
+      const lastProcessedFill = await this.getProcessedFill(recentOrder.order_id, marketId)
       const previousFilled = new Decimal(lastProcessedFill)
 
       if (currentFilled.gt(previousFilled)) {
@@ -510,8 +607,8 @@ class OrderFulfillmentService {
           order: recentOrder,
           previousFilledQuantity: lastProcessedFill,
         })
-        // Update our tracking to prevent re-processing this fill
-        this.processedFills.set(recentOrder.order_id, recentOrder.filled_quantity || '0')
+        // Update our tracking to prevent re-processing this fill (persists to database)
+        await this.updateProcessedFill(recentOrder.order_id, recentOrder.filled_quantity || '0', marketId)
         console.log(`[OrderFulfillmentService] Detected immediately filled order ${recentOrder.order_id} with ${recentOrder.filled_quantity} filled (previously processed: ${lastProcessedFill})`)
       }
     }

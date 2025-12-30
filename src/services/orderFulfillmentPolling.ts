@@ -30,9 +30,9 @@ class OrderFulfillmentPolling {
         if (fills.size > 0) {
           console.log(`[OrderFulfillmentPolling] Detected ${fills.size} fill(s) for market ${marketId}`)
           
-          // Update strategy config with fill prices
+          // Update strategy config with fill prices (always enabled)
           const storedConfig = await db.strategyConfigs.get(marketId)
-          if (storedConfig && storedConfig.config.orderManagement.trackFillPrices) {
+          if (storedConfig) {
             const market = await marketService.getMarket(marketId)
             if (market) {
               let updatedConfig = storedConfig.config

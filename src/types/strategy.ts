@@ -43,7 +43,7 @@ export interface PositionSizingConfig {
 // ============================================
 export interface OrderManagementConfig {
   // Profit Protection
-  trackFillPrices: boolean // Remember prices at which orders were filled
+  trackFillPrices: boolean // DEPRECATED: Always true now - kept for backwards compatibility
   onlySellAboveBuyPrice: boolean // Only place sell orders above average buy price
 
   // Order Limits

@@ -10,6 +10,7 @@ import { db } from './dbService'
 import { OrderSide, OrderType } from '../types/order'
 import { CreateOrderAction, CancelOrderAction } from '../types/o2ApiTypes'
 import { marketService } from './marketService'
+import { balanceService } from './balanceService'
 
 class OrderService {
   async placeOrder(
@@ -93,9 +94,14 @@ class OrderService {
     tradeAccountManager.incrementNonce()
 
     // Persist nonce to database with retry logic so next order uses correct nonce
-    const persistNonce = async (retries = 2) => {
+    // IMPORTANT: We await this to ensure nonce is persisted before returning
+    // This prevents nonce desync on browser crash/restart
+    const persistNonce = async (retries = 3) => {
       const session = await sessionService.getActiveSession(normalizedAddress)
-      if (!session) return
+      if (!session) {
+        console.warn('[OrderService] No active session found for nonce persistence')
+        return
+      }
 
       for (let i = 1; i <= retries; i++) {
         try {
@@ -103,15 +109,23 @@ class OrderService {
             session.tradeAccountId,
             parseInt(tradeAccountManager.nonce.toString())
           )
+          console.log(`[OrderService] Nonce persisted successfully: ${tradeAccountManager.nonce.toString()}`)
           return
         } catch (e) {
-          console.warn(`[OrderService] Nonce persist attempt ${i}/${retries} failed`)
-          if (i < retries) await new Promise(r => setTimeout(r, 100))
+          console.warn(`[OrderService] Nonce persist attempt ${i}/${retries} failed:`, e)
+          if (i < retries) await new Promise(r => setTimeout(r, 100 * i)) // Exponential backoff
         }
       }
+      // Log error but don't throw - order was already placed successfully
+      console.error('[OrderService] Failed to persist nonce after all retries. Nonce may be out of sync on restart.')
     }
-    // Fire and forget - don't block order placement
-    persistNonce().catch(() => {})
+
+    // Await nonce persistence to ensure database is updated before returning
+    await persistNonce()
+
+    // Clear balance cache after order placement to ensure fresh data on next cycle
+    // This prevents stale balance calculations for subsequent orders
+    balanceService.clearCache()
 
     // Store order in database
     if (response.orders && response.orders.length > 0) {

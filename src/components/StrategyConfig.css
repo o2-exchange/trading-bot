@@ -1,3 +1,116 @@
+/* Tooltip Styles */
+.tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: help;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.tooltip-icon:hover {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.tooltip-content {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  width: 200px;
+  max-width: 200px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+  pointer-events: none;
+  word-wrap: break-word;
+  white-space: normal;
+}
+
+.tooltip-content::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--border);
+}
+
+.tooltip-content::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: var(--popover);
+  margin-bottom: -1px;
+}
+
+.tooltip-icon:hover + .tooltip-content,
+.tooltip-content:hover {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Adjust tooltip position for fields near edges */
+.tooltip-wrapper.tooltip-left .tooltip-content {
+  left: -8px;
+  transform: translateX(0);
+}
+
+.tooltip-wrapper.tooltip-left .tooltip-content::after,
+.tooltip-wrapper.tooltip-left .tooltip-content::before {
+  left: 16px;
+  transform: translateX(0);
+}
+
+.tooltip-wrapper.tooltip-right .tooltip-content {
+  left: auto;
+  right: -8px;
+  transform: translateX(0);
+}
+
+.tooltip-wrapper.tooltip-right .tooltip-content::after,
+.tooltip-wrapper.tooltip-right .tooltip-content::before {
+  left: auto;
+  right: 16px;
+  transform: translateX(0);
+}
+
+/* Label with tooltip */
+.label-with-tooltip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .strategy-config {
   width: 100%;
   padding: 0;
@@ -11,6 +124,17 @@
 
 .configs-list {
   width: 100%;
+}
+
+.configs-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 11px;
 }
 
 .configs-grid {
@@ -230,6 +354,16 @@
   opacity: 0.9;
 }
 
+/* Copy button */
+.btn-copy {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.btn-copy:hover {
+  background: var(--muted);
+}
+
 /* Empty State */
 .empty-state {
   padding: 24px 16px;
@@ -243,6 +377,13 @@
 .empty-state p {
   margin: 0 0 10px 0;
   font-size: 13px;
+}
+
+.empty-state-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
 }
 
 .empty-state .btn {
@@ -310,6 +451,102 @@
 .config-modal-close:hover {
   background: var(--muted);
   color: var(--foreground);
+}
+
+/* Modal Header Actions (Export button + close) */
+.config-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-export {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-export:hover {
+  background: var(--muted);
+  border-color: var(--primary);
+}
+
+/* Import Modal */
+.import-modal-content {
+  max-width: 500px;
+}
+
+.import-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.import-divider::before,
+.import-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.import-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-size: 12px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--foreground);
+  resize: vertical;
+}
+
+.import-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.import-textarea::placeholder {
+  color: var(--muted-foreground);
+}
+
+.file-input {
+  width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.file-input::-webkit-file-upload-button {
+  padding: 6px 12px;
+  margin-right: 10px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.file-input::-webkit-file-upload-button:hover {
+  background: var(--muted);
 }
 
 /* Modal Body */

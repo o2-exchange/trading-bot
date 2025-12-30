@@ -406,10 +406,9 @@ class TradingEngine {
           console.warn('[TradingEngine] Failed to gather context:', error)
         }
 
-        // Track order fills before executing new strategy
-        if (marketConfig.config.orderManagement.trackFillPrices) {
-          await this.trackOrderFills(marketConfig.market.market_id, this.ownerAddress!)
-        }
+        // Note: Fill tracking is done AFTER strategy execution (lines 565-666) to avoid
+        // double-tracking race condition. The post-execution tracking also handles
+        // immediate sell orders and P&L updates in a single pass.
 
         // Execute unified strategy executor
         const result = await unifiedStrategyExecutor.execute(
@@ -561,8 +560,8 @@ class TradingEngine {
         }
         // Note: We no longer emit "No orders placed" since the dashboard shows balance/order context
 
-        // Track order fills and update config with fill prices
-        if (marketConfig.config.orderManagement.trackFillPrices && result.executed) {
+        // Track order fills and update config with fill prices (always enabled)
+        if (result.executed) {
           try {
             // Small delay to ensure database updates from getOrder() calls are persisted
             // This is especially important for immediately filled orders
@@ -702,48 +701,6 @@ class TradingEngine {
     const min = config.timing.cycleIntervalMinMs
     const max = config.timing.cycleIntervalMaxMs
     return min + Math.floor(Math.random() * (max - min + 1))
-  }
-
-  /**
-   * Track order fills and update config
-   */
-  private async trackOrderFills(marketId: string, ownerAddress: string): Promise<void> {
-    try {
-      const fills = await orderFulfillmentService.trackOrderFills(marketId, ownerAddress)
-
-      if (fills.size > 0) {
-        const storedConfig = await db.strategyConfigs.get(marketId)
-        if (storedConfig) {
-          let updatedConfig = storedConfig.config
-
-          const market = await marketService.getMarket(marketId)
-          if (market) {
-            for (const [orderId, { order, previousFilledQuantity }] of fills) {
-              updatedConfig = await orderFulfillmentService.updateFillPrices(
-                updatedConfig,
-                order,
-                market,
-                previousFilledQuantity
-              )
-            }
-          }
-
-          // Update config in database
-          await db.strategyConfigs.update(marketId, {
-            config: updatedConfig,
-            updatedAt: Date.now(),
-          })
-
-          // Update in-memory config
-          const marketConfig = this.marketConfigs.get(marketId)
-          if (marketConfig) {
-            marketConfig.config = updatedConfig
-          }
-        }
-      }
-    } catch (error) {
-      console.error('[TradingEngine] Error tracking order fills:', error)
-    }
   }
 
   /**
