@@ -23,6 +23,9 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
   const [sessionRestored, setSessionRestored] = useState(false)
   const consoleRef = useRef<HTMLDivElement>(null)
 
+  // Track current session ID to detect new sessions
+  const currentSessionIdRef = useRef<string | null>(null)
+
   // Restore session data on mount (before trading starts)
   useEffect(() => {
     if (sessionRestored) return
@@ -38,6 +41,8 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
 
         const session = await tradingSessionService.getResumableSession(walletAddress)
         if (session) {
+          currentSessionIdRef.current = session.id
+
           // Restore console messages
           if (session.consoleMessages && session.consoleMessages.length > 0) {
             setConsoleMessages(session.consoleMessages)
@@ -95,6 +100,52 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
 
     restoreSession()
   }, [sessionRestored])
+
+  // Subscribe to session updates to detect new session creation
+  useEffect(() => {
+    const unsubscribe = tradingSessionService.onSessionUpdate((session) => {
+      if (session) {
+        // Check if this is a NEW session (different ID than what we had)
+        const isNewSession = currentSessionIdRef.current !== null &&
+                             currentSessionIdRef.current !== session.id
+
+        if (isNewSession) {
+          // Clear console and add "new session" message
+          setConsoleMessages([{
+            message: 'New trading session started',
+            type: 'info',
+            timestamp: Date.now()
+          }])
+
+          // Reset context with fresh session stats (Volume, P&L, Fees, Trades = 0)
+          setContext(prev => ({
+            pair: session.marketPair || prev?.pair || '',
+            baseBalance: prev?.baseBalance || '-- --',
+            quoteBalance: prev?.quoteBalance || '$--',
+            lastBuyPrice: prev?.lastBuyPrice || null,
+            currentPrice: prev?.currentPrice || null,
+            openBuyOrders: prev?.openBuyOrders || 0,
+            openSellOrders: prev?.openSellOrders || 0,
+            pendingSellOrder: prev?.pendingSellOrder || null,
+            profitProtectionEnabled: prev?.profitProtectionEnabled ?? true,
+            nextRunIn: prev?.nextRunIn || 0,
+            sessionId: session.id,
+            totalVolume: 0,
+            totalFees: 0,
+            realizedPnL: 0,
+            tradeCount: 0
+          }))
+
+          console.log('[TradeConsole] New session detected, reset stats and cleared console')
+        }
+
+        // Always update the ref to current session
+        currentSessionIdRef.current = session.id
+      }
+    })
+
+    return unsubscribe
+  }, [])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

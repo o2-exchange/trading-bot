@@ -10,8 +10,8 @@ class TradingSessionService {
    * Create a new trading session
    */
   async createSession(ownerAddress: string, marketId: string, marketPair: string): Promise<TradingSession> {
-    // End any existing active session for this market
-    await this.endActiveSession(ownerAddress, marketId)
+    // End any existing active OR paused sessions for this market (clean slate for new session)
+    await this.endAllResumableSessions(ownerAddress, marketId)
 
     const session: TradingSession = {
       id: `${ownerAddress}-${marketId}-${Date.now()}`,
@@ -160,6 +160,24 @@ class TradingSessionService {
     if (session) {
       await this.endSession(session.id)
     }
+  }
+
+  /**
+   * End all resumable (active or paused) sessions for a market
+   * Used when creating a truly new session to ensure clean slate
+   */
+  async endAllResumableSessions(ownerAddress: string, marketId: string): Promise<void> {
+    const sessions = await db.tradingSessions
+      .where('ownerAddress')
+      .equals(ownerAddress)
+      .and(s => s.marketId === marketId && (s.status === 'active' || s.status === 'paused'))
+      .toArray()
+
+    for (const session of sessions) {
+      await this.endSession(session.id)
+    }
+
+    console.log(`[TradingSessionService] Ended ${sessions.length} resumable session(s) for market ${marketId}`)
   }
 
   /**

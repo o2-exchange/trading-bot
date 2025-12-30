@@ -65,10 +65,10 @@ class OrderFulfillmentPolling {
                 averageSellPrice: updatedConfig.averageSellPrice
               })
 
-              // Immediately place sell orders for buy fills
+              // Immediately place sell orders for buy fills (only when trading is active)
               const normalizedAddress = ownerAddress.toLowerCase()
               const session = await sessionService.getActiveSession(normalizedAddress)
-              if (session) {
+              if (session && tradingEngine.isActive()) {
                 for (const [orderId, { order }] of fills) {
                   // Check if this is a buy order
                   if (order.side === OrderSide.Buy) {

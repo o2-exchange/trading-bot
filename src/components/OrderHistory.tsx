@@ -113,10 +113,12 @@ export default function OrderHistory() {
 
     try {
       await orderService.cancelOrder(order.order_id, order.market_id, wallet.address)
-      // Refresh orders after cancellation
-      await loadOrders()
+      // Optimistically remove the cancelled order from local state
+      setOrders(prev => prev.filter(o => o.order_id !== order.order_id))
     } catch (error) {
       console.error('Failed to cancel order', error)
+      // On error, refresh from API to get accurate state
+      await loadOrders()
     } finally {
       setCancellingOrders(prev => {
         const newSet = new Set(prev)
