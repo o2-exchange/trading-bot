@@ -283,7 +283,7 @@
 .config-card-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 
 .config-summary {
@@ -1427,4 +1427,42 @@
   .btn-group {
     width: 100%;
   }
+}
+
+/* Config Inline Grid - Two column layout */
+.config-inline-grid {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  /* line-height: 1.5; */
+  color: var(--foreground);
+}
+
+.config-inline-grid .config-left {
+  flex: 1;
+}
+
+.config-inline-grid .config-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.config-inline-grid .cfg-text {
+  display: block;
+}
+
+.config-inline-grid .cfg-label {
+  color: var(--muted-foreground);
+}
+
+.config-inline-grid .risk-on {
+  color: var(--success);
+}
+
+.config-inline-grid .risk-off {
+  color: var(--muted-foreground);
+  opacity: 0.5;
 }

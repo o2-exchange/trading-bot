@@ -127,6 +127,24 @@ const TOOLTIPS = {
   maxDailyLoss: "Pause trading for the day if realized losses exceed this USD amount. Resets at midnight UTC.",
 }
 
+// Format price mode for display
+const formatPriceMode = (mode?: string): string => {
+  switch (mode) {
+    case 'offsetFromMid': return 'Mid'
+    case 'offsetFromBestBid': return 'Best Bid'
+    case 'offsetFromBestAsk': return 'Best Ask'
+    case 'market': return 'Market'
+    default: return mode || 'Mid'
+  }
+}
+
+// Format interval for display (ms to human readable)
+const formatInterval = (minMs?: number, maxMs?: number): string => {
+  const min = minMs ? (minMs / 1000).toFixed(0) : '3'
+  const max = maxMs ? (maxMs / 1000).toFixed(0) : '5'
+  return `${min}-${max}s`
+}
+
 // Migration function to convert old config structure to new structure
 const migrateOldConfig = (oldConfig: any): StrategyConfigType => {
     // Check if config already has new structure
@@ -710,43 +728,43 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                   
                   <div className="config-card-body">
                     {config.config.orderConfig && (
-                      <div className="config-summary">
-                        <div className="summary-row">
-                          <span className="summary-item">
-                            <span className="summary-label">Type</span>
-                            <span className="summary-value">{config.config.orderConfig.orderType || 'Market'}</span>
+                      <div className="config-inline-grid">
+                        {/* Left: Order & Position settings */}
+                        <div className="config-left">
+                          <span className="cfg-text">
+                            <span className="cfg-label">Type:</span> {config.config.orderConfig.orderType === 'Spot' ? 'Limit' : 'Market'} ·
+                            <span className="cfg-label">Side:</span> {config.config.orderConfig.side || 'Both'} ·
+                            <span className="cfg-label">Mode:</span> {formatPriceMode(config.config.orderConfig.priceMode)}
                           </span>
-                          <span className="summary-separator">•</span>
-                          <span className="summary-item">
-                            <span className="summary-label">Side</span>
-                            <span className="summary-value">{config.config.orderConfig.side || 'Both'}</span>
+                          <span className="cfg-text">
+                            <span className="cfg-label">Offset:</span> {config.config.orderConfig.priceOffsetPercent?.toFixed(2) || '0.00'}% ·
+                            <span className="cfg-label">Spread:</span> {config.config.orderConfig.maxSpreadPercent?.toFixed(1) || '0'}% ·
+                            <span className="cfg-label">Orders:</span> {config.config.orderManagement?.maxOpenOrders || 2}
+                          </span>
+                          <span className="cfg-text">
+                            <span className="cfg-label">Size:</span>
+                            {config.config.positionSizing?.sizeMode === 'fixedUsd'
+                              ? ` $${config.config.positionSizing.fixedUsdAmount || 0}`
+                              : ` ${config.config.positionSizing?.baseBalancePercentage ?? 100}%/${config.config.positionSizing?.quoteBalancePercentage ?? 100}%`
+                            } ·
+                            <span className="cfg-label">Min:</span> ${config.config.positionSizing?.minOrderSizeUsd || 5}
+                            {config.config.positionSizing?.maxOrderSizeUsd ? <> · <span className="cfg-label">Max:</span> ${config.config.positionSizing.maxOrderSizeUsd}</> : null} ·
+                            <span className="cfg-label">Interval:</span> {formatInterval(config.config.timing?.cycleIntervalMinMs, config.config.timing?.cycleIntervalMaxMs)}
                           </span>
                         </div>
-                        <div className="summary-row">
-                          <span className="summary-item">
-                            <span className="summary-label">Offset</span>
-                            <span className="summary-value">{config.config.orderConfig.priceOffsetPercent?.toFixed(2) || '0.00'}%</span>
+                        {/* Right: Risk management */}
+                        <div className="config-right">
+                          <span className={config.config.orderManagement?.onlySellAboveBuyPrice ? 'risk-on' : 'risk-off'}>
+                            Sell Above{config.config.orderManagement?.onlySellAboveBuyPrice ? ` +${config.config.riskManagement?.takeProfitPercent || 0.02}%` : ''}
                           </span>
-                          <span className="summary-separator">•</span>
-                          <span className="summary-item">
-                            <span className="summary-label">Max Spread</span>
-                            <span className="summary-value">{config.config.orderConfig.maxSpreadPercent?.toFixed(1) || '0'}%</span>
+                          <span className={config.config.riskManagement?.stopLossEnabled ? 'risk-on' : 'risk-off'}>
+                            Stop Loss{config.config.riskManagement?.stopLossEnabled ? ` ${config.config.riskManagement?.stopLossPercent}%` : ''}
                           </span>
-                        </div>
-                        <div className="summary-row">
-                          <span className="summary-item">
-                            <span className="summary-label">Balance</span>
-                            <span className="summary-value">
-                              {config.config.positionSizing?.sizeMode === 'fixedUsd' 
-                                ? `$${config.config.positionSizing.fixedUsdAmount || 0}`
-                                : `Base: ${config.config.positionSizing?.baseBalancePercentage ?? config.config.positionSizing?.balancePercentage ?? 0}%, Quote: ${config.config.positionSizing?.quoteBalancePercentage ?? config.config.positionSizing?.balancePercentage ?? 0}%`
-                              }
-                            </span>
+                          <span className={config.config.riskManagement?.orderTimeoutEnabled ? 'risk-on' : 'risk-off'}>
+                            Timeout{config.config.riskManagement?.orderTimeoutEnabled ? ` ${config.config.riskManagement?.orderTimeoutMinutes}m` : ''}
                           </span>
-                          <span className="summary-separator">•</span>
-                          <span className="summary-item">
-                            <span className="summary-label">Min Size</span>
-                            <span className="summary-value">${config.config.positionSizing?.minOrderSizeUsd || 5}</span>
+                          <span className={config.config.riskManagement?.maxDailyLossEnabled ? 'risk-on' : 'risk-off'}>
+                            Daily Limit{config.config.riskManagement?.maxDailyLossEnabled ? ` $${config.config.riskManagement?.maxDailyLossUsd}` : ''}
                           </span>
                         </div>
                       </div>
