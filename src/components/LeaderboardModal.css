@@ -15,7 +15,7 @@
 .leaderboard-modal-content {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   width: 100%;
   max-width: 900px;
   max-height: 90vh;

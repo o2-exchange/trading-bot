@@ -35,7 +35,7 @@
   background: var(--popover);
   color: var(--popover-foreground);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 8px 10px;
   font-size: 11px;
   line-height: 1.4;
@@ -121,7 +121,7 @@
 .preset-tab {
   flex: 1;
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--background);
   border: 1px solid var(--border);
   cursor: pointer;
@@ -203,7 +203,7 @@
 .config-card {
   background: var(--background);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 8px 10px;
   transition: all 0.2s ease;
   display: flex;
@@ -261,7 +261,7 @@
 
 .status-badge {
   padding: 3px 8px;
-  border-radius: 10px;
+  border-radius: 4px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -427,7 +427,7 @@
   color: var(--muted-foreground);
   background: var(--background);
   border: 1px dashed var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 .empty-state p {
@@ -464,7 +464,7 @@
 .config-modal-content {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   max-width: 600px;
   width: 100%;
   max-height: 90vh;
@@ -1168,7 +1168,7 @@
   font-weight: normal;
   position: relative;
   padding: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   transition: background-color 0.2s ease;
   margin-bottom: 0;
 }
@@ -1346,7 +1346,7 @@
 .form-group.pnl-display {
   background: var(--muted);
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 4px;
   margin-top: 12px;
 }
 

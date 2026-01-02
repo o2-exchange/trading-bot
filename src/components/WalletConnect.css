@@ -10,7 +10,7 @@
 .wallet-connect-container {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 4px;
   padding: 24px 32px;
   max-width: 500px;
   width: 100%;
@@ -48,7 +48,7 @@
   padding: 8px 14px;
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 6px;
+  border-radius: 4px;
   margin-bottom: 20px;
   font-size: 12px;
   color: #ef4444;
@@ -77,7 +77,7 @@
   border: 1px solid var(--border);
   color: var(--foreground);
   padding: 14px 16px;
-  border-radius: 8px;
+  border-radius: 4px;
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
@@ -99,7 +99,7 @@
 .wallet-icon {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
@@ -110,6 +110,6 @@
   margin-top: 16px;
   padding: 12px;
   background: var(--muted);
-  border-radius: 6px;
+  border-radius: 4px;
 }
 

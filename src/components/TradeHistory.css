@@ -1,7 +1,7 @@
 .trade-history {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 16px;
 }
 
@@ -34,7 +34,7 @@
   padding: 8px 12px;
   background: var(--background);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 4px;
   color: var(--foreground);
   font-size: 14px;
   cursor: pointer;

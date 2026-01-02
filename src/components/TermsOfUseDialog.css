@@ -14,7 +14,7 @@
 .dialog-content {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 4px;
   padding: 32px;
   max-width: 600px;
   width: 90%;
@@ -60,7 +60,7 @@
   margin-bottom: 24px;
   padding: 16px;
   background: var(--muted);
-  border-radius: 8px;
+  border-radius: 4px;
 }
 
 .terms-checkbox label {
@@ -86,7 +86,7 @@
 .decline-button,
 .accept-button {
   padding: 12px 24px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;

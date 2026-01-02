@@ -15,7 +15,7 @@
 .connect-wallet-dialog {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 4px;
   max-width: 480px;
   width: 100%;
   max-height: 80vh;
@@ -48,7 +48,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 4px;
   transition: all 0.2s;
 }
 
@@ -99,7 +99,7 @@
   border: 1px solid var(--border);
   color: var(--foreground);
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: 4px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -121,6 +121,6 @@
 .connect-wallet-dialog .wallet-icon {
   width: 26px;
   height: 26px;
-  border-radius: 6px;
+  border-radius: 4px;
   flex-shrink: 0;
 }
