@@ -60,7 +60,7 @@ export default function Balances({ balances, loading }: BalancesProps) {
             <th>Asset</th>
             <th>Available</th>
             <th>Locked</th>
-            <th>Value (USD)</th>
+            <th>~Value (USD)</th>
           </tr>
         </thead>
         <tbody>

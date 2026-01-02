@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { walletService } from '../services/walletService'
 import { sessionService } from '../services/sessionService'
 import { tradingEngine } from '../services/tradingEngine'
@@ -314,12 +314,12 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     }
   }
 
-  // Callbacks for auth flow overlay
-  const handleAuthReady = () => {
+  // Callbacks for auth flow overlay - wrapped in useCallback to prevent infinite re-renders
+  const handleAuthReady = useCallback(() => {
     setAuthReady(true)
-  }
+  }, [])
 
-  const handleAuthStateChange = (state: string, isWhitelisted: boolean | null) => {
+  const handleAuthStateChange = useCallback((state: string, isWhitelisted: boolean | null) => {
     setAuthState(state)
     if (isWhitelisted !== null) {
       setIsEligible(isWhitelisted)
@@ -330,7 +330,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
       setAuthReady(true)
       setIsEligible(false)
     }
-  }
+  }, [])
 
   return (
     <div className="dashboard">

@@ -172,7 +172,7 @@
 
 
 .dashboard-content {
-  padding: 8px 16px;
+  padding: 4px 0;
   max-width: 100%;
   margin: 0;
   flex: 1;
@@ -181,7 +181,7 @@
 .dashboard-main {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 4px;
   align-items: start;
 }
 
@@ -211,7 +211,7 @@
 .dashboard-right-column {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
 }
 
 .balances-section > .section-header,
