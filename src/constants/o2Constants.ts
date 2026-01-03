@@ -17,5 +17,5 @@ export const MIN_ORDER_SIZE_USD = 1
 export const DEFAULT_PRECISION = 100
 
 // Hide USDT markets and balances from UI (set to false when USDT is fully available)
-export const HIDE_USDT_IN_UI = true
+export const HIDE_USDT_IN_UI = false
 

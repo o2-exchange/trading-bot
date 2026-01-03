@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Market } from '../types/market'
 import { StrategyConfigStore, StrategyConfig as StrategyConfigType, getDefaultStrategyConfig, getPresetStrategyConfig, StrategyPreset, STRATEGY_PRESET_LABELS, STRATEGY_PRESET_DESCRIPTIONS, OrderConfig, PositionSizingConfig, OrderManagementConfig, RiskManagementConfig, TimingConfig } from '../types/strategy'
 import { db } from '../services/dbService'
+import { orderService } from '../services/orderService'
+import { walletService } from '../services/walletService'
 import { useToast } from './ToastProvider'
 import './StrategyConfig.css'
 
@@ -215,6 +217,9 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
   const [importMarket, setImportMarket] = useState<string>('')
   const [importJson, setImportJson] = useState<string>('')
   const [currentPreset, setCurrentPreset] = useState<StrategyPreset>('simple')
+  const [showCancelOrdersConfirm, setShowCancelOrdersConfirm] = useState(false)
+  const [pendingAction, setPendingAction] = useState<{ type: 'save' | 'deactivate'; config?: StrategyConfigStore } | null>(null)
+  const [isCancellingOrders, setIsCancellingOrders] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { addToast } = useToast()
 
@@ -300,7 +305,8 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
     setIsCreating(false)
   }
 
-  const handleSave = async () => {
+  // Actual save logic extracted to be called after order cancellation confirmation
+  const performSave = async () => {
     if (!selectedMarket) {
       addToast('Please select a market', 'error')
       return
@@ -370,12 +376,112 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
     handleCancel()
   }
 
-  const handleToggleActive = async (config: StrategyConfigStore) => {
+  const handleSave = async () => {
+    if (!selectedMarket) {
+      addToast('Please select a market', 'error')
+      return
+    }
+
+    // Check for open orders before saving
+    const wallet = walletService.getConnectedWallet()
+    if (wallet && selectedMarket) {
+      try {
+        const openOrders = await orderService.getOpenOrders(selectedMarket, wallet.address)
+        if (openOrders.length > 0) {
+          setPendingAction({ type: 'save' })
+          setShowCancelOrdersConfirm(true)
+          return
+        }
+      } catch (error) {
+        console.error('Failed to check open orders:', error)
+        // Proceed with save if we can't check orders
+      }
+    }
+
+    // No open orders, proceed with save
+    await performSave()
+  }
+
+  // Actual toggle logic extracted to be called after order cancellation confirmation
+  const performToggleActive = async (config: StrategyConfigStore) => {
     await db.strategyConfigs.update(config.id, {
       isActive: !config.isActive,
       updatedAt: Date.now(),
     })
     await loadConfigs()
+  }
+
+  const handleToggleActive = async (config: StrategyConfigStore) => {
+    // If deactivating, check for open orders
+    if (config.isActive) {
+      const wallet = walletService.getConnectedWallet()
+      if (wallet) {
+        try {
+          const openOrders = await orderService.getOpenOrders(config.marketId, wallet.address)
+          if (openOrders.length > 0) {
+            setPendingAction({ type: 'deactivate', config })
+            setShowCancelOrdersConfirm(true)
+            return
+          }
+        } catch (error) {
+          console.error('Failed to check open orders:', error)
+          // Proceed with toggle if we can't check orders
+        }
+      }
+    }
+
+    // No open orders or activating, proceed
+    await performToggleActive(config)
+  }
+
+  // Handle confirmation of order cancellation
+  const handleConfirmCancelOrders = async () => {
+    if (!pendingAction) return
+
+    const wallet = walletService.getConnectedWallet()
+    if (!wallet) {
+      addToast('Wallet not connected', 'error')
+      setShowCancelOrdersConfirm(false)
+      setPendingAction(null)
+      return
+    }
+
+    setIsCancellingOrders(true)
+
+    try {
+      const marketId = pendingAction.type === 'save' ? selectedMarket : pendingAction.config?.marketId
+      if (marketId) {
+        const result = await orderService.cancelOrdersForMarket(marketId, wallet.address)
+        if (result.cancelled > 0) {
+          addToast(`Cancelled ${result.cancelled} open order(s)`, 'info')
+        }
+        if (result.failed > 0) {
+          addToast(`Failed to cancel ${result.failed} order(s)`, 'warning')
+        }
+        // Trigger refresh of OpenOrdersPanel
+        window.dispatchEvent(new Event('refresh-orders'))
+      }
+    } catch (error) {
+      console.error('Failed to cancel orders:', error)
+      addToast('Failed to cancel some orders', 'warning')
+    } finally {
+      setIsCancellingOrders(false)
+    }
+
+    // Proceed with the pending action
+    if (pendingAction.type === 'save') {
+      await performSave()
+    } else if (pendingAction.config) {
+      await performToggleActive(pendingAction.config)
+    }
+
+    setShowCancelOrdersConfirm(false)
+    setPendingAction(null)
+  }
+
+  const handleCancelOrdersDialogClose = () => {
+    setShowCancelOrdersConfirm(false)
+    setPendingAction(null)
   }
 
   const handleDelete = async (config: StrategyConfigStore) => {
@@ -860,6 +966,39 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Orders Confirmation Dialog */}
+      {showCancelOrdersConfirm && (
+        <div className="config-modal-overlay" onClick={handleCancelOrdersDialogClose}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-dialog-header">
+              <h3>{pendingAction?.type === 'save' ? 'Save Strategy' : 'Deactivate Strategy'}</h3>
+            </div>
+            <div className="confirm-dialog-body">
+              {isCancellingOrders ? (
+                <p>Cancelling open orders...</p>
+              ) : (
+                <>
+                  <p>This market has open orders. Proceeding will:</p>
+                  <ul>
+                    <li>Cancel all open orders for this market</li>
+                    <li>{pendingAction?.type === 'save' ? 'Save your strategy changes' : 'Deactivate this strategy'}</li>
+                  </ul>
+                  <p>Are you sure you want to proceed?</p>
+                </>
+              )}
+            </div>
+            <div className="confirm-dialog-actions">
+              <button onClick={handleCancelOrdersDialogClose} className="cancel-btn" disabled={isCancellingOrders}>
+                Cancel
+              </button>
+              <button onClick={handleConfirmCancelOrders} className="confirm-btn" disabled={isCancellingOrders}>
+                {isCancellingOrders ? 'Processing...' : 'Confirm'}
+              </button>
             </div>
           </div>
         </div>

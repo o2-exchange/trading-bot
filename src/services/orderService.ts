@@ -309,6 +309,31 @@ class OrderService {
     console.log(`[OrderService] Cancel all orders complete: ${cancelled} cancelled, ${failed} failed`)
     return { cancelled, failed }
   }
+
+  async cancelOrdersForMarket(marketId: string, ownerAddress: string): Promise<{ cancelled: number; failed: number }> {
+    const normalizedAddress = ownerAddress.toLowerCase()
+
+    // Get open orders for this specific market
+    const openOrders = await this.getOpenOrders(marketId, normalizedAddress)
+
+    let cancelled = 0
+    let failed = 0
+
+    // Cancel each order sequentially (each requires blockchain transaction)
+    for (const order of openOrders) {
+      try {
+        await this.cancelOrder(order.order_id, order.market_id, normalizedAddress)
+        cancelled++
+        console.log(`[OrderService] Cancelled order ${order.order_id} for market ${marketId}`)
+      } catch (error) {
+        console.error(`[OrderService] Failed to cancel order ${order.order_id}:`, error)
+        failed++
+      }
+    }
+
+    console.log(`[OrderService] Cancel orders for market ${marketId} complete: ${cancelled} cancelled, ${failed} failed`)
+    return { cancelled, failed }
+  }
 }
 
 export const orderService = new OrderService()
