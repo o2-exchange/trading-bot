@@ -4,6 +4,7 @@ import { StrategyConfigStore, StrategyConfig as StrategyConfigType, getDefaultSt
 import { db } from '../services/dbService'
 import { orderService } from '../services/orderService'
 import { walletService } from '../services/walletService'
+import { tradingEngine } from '../services/tradingEngine'
 import { useToast } from './ToastProvider'
 import './StrategyConfig.css'
 
@@ -404,10 +405,19 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
 
   // Actual toggle logic extracted to be called after order cancellation confirmation
   const performToggleActive = async (config: StrategyConfigStore) => {
+    const isDeactivating = config.isActive
+
     await db.strategyConfigs.update(config.id, {
       isActive: !config.isActive,
       updatedAt: Date.now(),
     })
+
+    // If deactivating and trading is active, stop trading for this specific market
+    // This allows other markets to continue trading
+    if (isDeactivating && tradingEngine.isActive()) {
+      tradingEngine.stopMarketTrading(config.marketId)
+    }
+
     await loadConfigs()
   }
 

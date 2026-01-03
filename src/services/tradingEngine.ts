@@ -307,6 +307,44 @@ class TradingEngine {
     return this.isRunning
   }
 
+  /**
+   * Stop trading for a specific market without stopping the entire engine.
+   * Used when a strategy is deactivated while trading is active.
+   */
+  stopMarketTrading(marketId: string): void {
+    const marketConfig = this.marketConfigs.get(marketId)
+    if (!marketConfig) {
+      console.log(`[TradingEngine] Market ${marketId} not found in active configs`)
+      return
+    }
+
+    console.log(`[TradingEngine] Stopping trading for market ${marketId}`)
+
+    // Clear the timeout for this market's trading loop
+    if (marketConfig.intervalId) {
+      clearTimeout(marketConfig.intervalId)
+    }
+
+    // Pause the session for this market
+    if (marketConfig.sessionId) {
+      tradingSessionService.pauseSession(marketConfig.sessionId).catch(err =>
+        console.error(`[TradingEngine] Failed to pause session for ${marketId}:`, err)
+      )
+    }
+
+    // Remove this market from active configs
+    this.marketConfigs.delete(marketId)
+
+    // Remove context for this market
+    this.marketContexts.delete(`${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`)
+    this.emitMultiContext()
+
+    const pair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
+    this.emitStatus(`${pair}: Strategy deactivated`, 'info')
+
+    console.log(`[TradingEngine] Stopped trading for ${marketId}. Remaining markets: ${this.marketConfigs.size}`)
+  }
+
   getSessionTradeCycles(): number {
     return this.sessionTradeCycles
   }
