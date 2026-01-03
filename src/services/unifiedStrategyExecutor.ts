@@ -215,6 +215,7 @@ class UnifiedStrategyExecutor {
         side: 'Sell',
         success: false,
         error: `Stop loss sell failed: ${error.message}`,
+        errorDetails: error,
         marketPair,
       })
     }
@@ -384,6 +385,7 @@ class UnifiedStrategyExecutor {
             side: 'Buy',
             success: false,
             error: error.message,
+            errorDetails: error,
           },
         ],
       }
@@ -585,6 +587,7 @@ class UnifiedStrategyExecutor {
         side: 'Buy',
         success: false,
         error: error.message,
+        errorDetails: error,
         marketPair,
       }
     }
@@ -751,6 +754,7 @@ class UnifiedStrategyExecutor {
         side: 'Sell',
         success: false,
         error: error.message,
+        errorDetails: error,
         marketPair,
       }
     }

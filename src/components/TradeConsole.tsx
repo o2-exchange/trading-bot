@@ -241,6 +241,46 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
     return percent >= 0 ? 'positive' : 'negative'
   }
 
+  // Download logs as JSON file
+  const downloadLogs = () => {
+    const logData = {
+      exportedAt: new Date().toISOString(),
+      mode: consoleMode,
+      totalMessages: consoleMessages.length,
+      contexts: Array.from(contexts.entries()).map(([pair, ctx]) => ({
+        pair,
+        sessionId: ctx.sessionId,
+        totalVolume: ctx.totalVolume,
+        totalFees: ctx.totalFees,
+        realizedPnL: ctx.realizedPnL,
+        tradeCount: ctx.tradeCount,
+      })),
+      messages: consoleMessages.map(msg => ({
+        timestamp: new Date(msg.timestamp).toISOString(),
+        type: msg.type,
+        message: msg.message,
+        verbosity: msg.verbosity || 'simple'
+      }))
+    }
+    const blob = new Blob([JSON.stringify(logData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `trading-logs-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Get icon for message type
+  const getMessageIcon = (type: string) => {
+    switch (type) {
+      case 'success': return '✓'
+      case 'error': return '✕'
+      case 'warning': return '⚠'
+      default: return '→'
+    }
+  }
+
   return (
     <div className={`trade-console ${consoleCollapsed ? 'collapsed' : ''}`}>
       <div
@@ -249,6 +289,16 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
       >
         <span className="console-title">Trade Execution Console</span>
         <div className="console-header-right">
+          <button
+            className="console-download-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              downloadLogs()
+            }}
+            title="Download logs as JSON"
+          >
+            ↓
+          </button>
           <button
             className={`console-mode-toggle ${consoleMode}`}
             onClick={(e) => {
@@ -371,9 +421,12 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
               consoleMessages
                 .filter(log => consoleMode === 'debug' || log.verbosity !== 'debug')
                 .map((log, index) => (
-                <div key={index} className={`console-line console-${log.type}`}>
+                <div key={index} className={`console-line console-${log.type} ${log.verbosity === 'debug' ? 'debug-msg' : ''}`}>
                   <span className="console-timestamp">
                     {formatTime(log.timestamp)}
+                  </span>
+                  <span className={`console-icon console-icon-${log.type}`}>
+                    {getMessageIcon(log.type)}
                   </span>
                   <span className="console-message">{log.message}</span>
                 </div>

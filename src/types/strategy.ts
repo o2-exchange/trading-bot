@@ -288,6 +288,7 @@ export interface OrderExecution {
   quantity?: string // Scaled quantity (for API)
   filledQuantity?: string
   error?: string
+  errorDetails?: unknown // Full error response for debug mode
   // Human-readable values for display
   priceHuman?: string // Human-readable price (e.g., "50000.00")
   quantityHuman?: string // Human-readable quantity (e.g., "0.5")

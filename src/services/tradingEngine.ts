@@ -491,10 +491,14 @@ class TradingEngine {
       }
 
       this.transactionLock = true
+      this.sessionTradeCycles++
 
       try {
-        console.log(`[TradingEngine] Executing strategy for ${marketConfig.market.market_id}`)
         const pair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
+        console.log(`[TradingEngine] Executing strategy for ${marketConfig.market.market_id}`)
+
+        // Debug: Strategy cycle start
+        this.emitStatus(`${pair}: Cycle #${this.sessionTradeCycles} starting`, 'info', 'debug')
 
         // Refresh config from database to get latest risk management settings
         const storedConfig = await db.strategyConfigs.get(marketConfig.market.market_id)
@@ -545,23 +549,22 @@ class TradingEngine {
             ? new Decimal(ticker.last_price).div(10 ** marketConfig.market.quote.decimals).toFixed(marketConfig.market.quote.decimals).replace(/\.?0+$/, '')
             : null
 
-          // CHECK: Low balance warning
+          // CHECK: Low balance warning - only warn if BOTH sides are below minimum AND no open orders
           const minOrderSizeUsd = marketConfig.config.positionSizing.minOrderSizeUsd
           const currentPriceDecimal = ticker?.last_price
             ? new Decimal(ticker.last_price).div(10 ** marketConfig.market.quote.decimals)
             : null
 
-          // Check quote balance for buy orders
-          if (quoteBalanceHuman.toNumber() < minOrderSizeUsd && buyOrders.length === 0) {
-            this.emitStatus(`${pair}: Quote balance ($${quoteBalanceHuman.toFixed(2)}) below minimum order size ($${minOrderSizeUsd})`, 'warning')
-          }
+          const quoteValueUsd = quoteBalanceHuman.toNumber()
+          const baseValueUsd = currentPriceDecimal ? baseBalanceHuman.mul(currentPriceDecimal).toNumber() : 0
+          const hasNoOpenOrders = buyOrders.length === 0 && sellOrders.length === 0
 
-          // Check base balance for sell orders (in USD terms)
-          if (currentPriceDecimal && sellOrders.length === 0) {
-            const baseValueUsd = baseBalanceHuman.mul(currentPriceDecimal).toNumber()
-            if (baseValueUsd < minOrderSizeUsd && baseValueUsd > 0.01) {
-              this.emitStatus(`${pair}: Base balance (${baseBalanceHuman.toFixed(6)} ${marketConfig.market.base.symbol} = $${baseValueUsd.toFixed(2)}) below minimum order size ($${minOrderSizeUsd})`, 'warning')
-            }
+          if (quoteValueUsd < minOrderSizeUsd && baseValueUsd < minOrderSizeUsd && hasNoOpenOrders) {
+            // Both sides below minimum AND no orders waiting - can't place any orders
+            this.emitStatus(
+              `${pair}: Cannot place orders - both balances below $${minOrderSizeUsd} (Base: $${baseValueUsd.toFixed(2)}, Quote: $${quoteValueUsd.toFixed(2)})`,
+              'warning'
+            )
           }
 
           // Debug mode: emit balance update
@@ -737,38 +740,18 @@ class TradingEngine {
               }
 
               await tradeHistoryService.addTrade(trade)
-              
-              // Format success message with human-readable values
+
+              // Format placement message with human-readable values
               const pair = orderExec.marketPair || `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
-              const orderType = orderExec.isLimitOrder ? 'LIMIT' : 'MARKET'
               const amount = orderExec.quantityHuman || 'N/A'
               const asset = marketConfig.market.base.symbol
               const orderPrice = orderExec.priceHuman ? `$${orderExec.priceHuman}` : 'N/A'
+              const orderType = orderExec.isLimitOrder ? 'LIMIT' : 'MARKET'
 
-              // Format fill price if available
-              let fillPriceHuman: string | null = null
-              if (priceFill && priceFill !== '0') {
-                // Use proper decimal precision for small prices (e.g., $0.001668 instead of $0.00)
-                fillPriceHuman = new Decimal(priceFill).div(10 ** marketConfig.market.quote.decimals).toFixed(marketConfig.market.quote.decimals).replace(/\.?0+$/, '')
-              }
+              // Build placement message (fill messages come from trackOrderFills)
+              const statusMsg = `${pair} ${orderType}: ${orderExec.side} order placed for ${amount} ${asset} at ${orderPrice}`
 
-              // Format filled quantity if available
-              let filledQtyHuman: string | null = null
-              if (filledQuantity && filledQuantity !== '0') {
-                filledQtyHuman = new Decimal(filledQuantity).div(10 ** marketConfig.market.base.decimals).toFixed(3).replace(/\.?0+$/, '')
-              }
-
-              // Build detailed message
-              let statusMsg: string
-              if (fillPriceHuman && filledQtyHuman) {
-                statusMsg = `${pair} ${orderType}: ${orderExec.side} order placed at ${orderPrice}, filled ${filledQtyHuman} ${asset} at $${fillPriceHuman}`
-              } else if (fillPriceHuman) {
-                statusMsg = `${pair} ${orderType}: ${orderExec.side} order placed at ${orderPrice}, filled at $${fillPriceHuman}`
-              } else {
-                statusMsg = `${pair} ${orderType}: ${orderExec.side} order placed for ${amount} ${asset} at ${orderPrice}`
-              }
-
-              this.emitStatus(statusMsg, 'success')
+              this.emitStatus(statusMsg, 'info')
 
               // Note: Trade recording moved to fill detection section (recordConfirmedFill)
               // This ensures accurate trade count based on confirmed fills, not order placements
@@ -780,14 +763,22 @@ class TradingEngine {
             } else {
               console.error(`[TradingEngine] Order failed: ${orderExec.side} - ${orderExec.error}`)
 
-              // Format error message with market pair
+              // Format error message with market pair and order type
               const pair = orderExec.marketPair || `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
               const orderType = orderExec.isLimitOrder ? 'LIMIT' : 'MARKET'
               const errorMsg = orderExec.error || 'Unknown error'
-              this.emitStatus(
-                `${pair} ${orderType}: ${orderExec.side} order failed - ${errorMsg}`,
-                'error'
-              )
+
+              // Simple mode: concise error
+              this.emitStatus(`${pair} ${orderType}: ${orderExec.side} order failed - ${errorMsg}`, 'error')
+
+              // Debug mode: full error details as JSON if available
+              if (orderExec.errorDetails) {
+                this.emitStatus(
+                  `${pair}: Error details: ${JSON.stringify(orderExec.errorDetails)}`,
+                  'error',
+                  'debug'
+                )
+              }
             }
           }
 
@@ -810,6 +801,11 @@ class TradingEngine {
             
             console.log(`[TradingEngine] Tracked order fills: ${fillsDetected.size} fill(s) detected for market ${marketConfig.market.market_id}`)
 
+            // Debug: order tracking info
+            if (fillsDetected.size > 0) {
+              this.emitStatus(`${pair}: Detected ${fillsDetected.size} fill(s)`, 'info', 'debug')
+            }
+
             // Emit fill detection messages and record confirmed fills
             for (const [orderId, fillData] of fillsDetected.entries()) {
               const market = marketConfig.market
@@ -824,11 +820,13 @@ class TradingEngine {
                 ? new Decimal(fillData.order.price_fill).div(10 ** market.quote.decimals)
                 : new Decimal(fillData.order.price).div(10 ** market.quote.decimals)
               const side = fillData.order.side === OrderSide.Buy ? 'Buy' : 'Sell'
+              // Use strategy config order type (API doesn't return accurate order_type)
+              const fillOrderType = marketConfig.config.orderConfig.orderType === 'Market' ? 'MARKET' : 'LIMIT'
 
               // Only process if there's a new fill (not just re-detecting old fill)
               if (newFillQtyHuman.gt(0)) {
                 this.emitStatus(
-                  `${pair}: ${side} order filled - ${newFillQtyHuman.toFixed(3).replace(/\.?0+$/, '')} ${market.base.symbol} @ $${fillPriceHuman.toFixed(market.quote.decimals).replace(/\.?0+$/, '')}`,
+                  `${pair} ${fillOrderType}: ${side} filled ${newFillQtyHuman.toFixed(3).replace(/\.?0+$/, '')} ${market.base.symbol} @ $${fillPriceHuman.toFixed(market.quote.decimals).replace(/\.?0+$/, '')}`,
                   'success'
                 )
 
