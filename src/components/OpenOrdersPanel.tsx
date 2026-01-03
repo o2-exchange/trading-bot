@@ -66,11 +66,20 @@ export default function OpenOrdersPanel() {
     checkTradingStatus()
     const statusCheckInterval = setInterval(checkTradingStatus, 2000)
 
+    // Listen for external refresh requests (e.g., after bulk order cancellation)
+    const handleRefreshOrders = () => {
+      console.log('[OpenOrdersPanel] Received refresh-orders event')
+      setLoading(true)
+      loadOrders()
+    }
+    window.addEventListener('refresh-orders', handleRefreshOrders)
+
     return () => {
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current)
       }
       clearInterval(statusCheckInterval)
+      window.removeEventListener('refresh-orders', handleRefreshOrders)
     }
   }, [])
 

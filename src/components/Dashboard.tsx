@@ -6,6 +6,7 @@ import { tradingAccountService } from '../services/tradingAccountService'
 import { marketService } from '../services/marketService'
 import { authFlowService } from '../services/authFlowService'
 import { tradingSessionService } from '../services/tradingSessionService'
+import { orderService } from '../services/orderService'
 import { useToast } from './ToastProvider'
 import AuthFlowOverlay from './AuthFlowOverlay'
 import TradingAccount from './TradingAccount'
@@ -46,6 +47,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
   const [showDepositDialog, setShowDepositDialog] = useState(false)
   const [showConnectWalletDialog, setShowConnectWalletDialog] = useState(false)
   const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false)
+  const [isCancellingOrders, setIsCancellingOrders] = useState(false)
   const [authReady, setAuthReady] = useState(false)
   const [authState, setAuthState] = useState<string>('idle')
   const { addToast } = useToast()
@@ -277,17 +279,39 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
   }
 
   const handleConfirmNewSession = async () => {
-    setShowNewSessionConfirm(false)
-
-    // Clear old session data - end all resumable sessions for this wallet
     if (walletAddress) {
+      // Show progress indicator
+      setIsCancellingOrders(true)
+
+      // Cancel all open orders first
+      try {
+        const result = await orderService.cancelAllOpenOrders(walletAddress)
+        if (result.cancelled > 0) {
+          addToast(`Cancelled ${result.cancelled} open order(s)`, 'info')
+        }
+        if (result.failed > 0) {
+          addToast(`Failed to cancel ${result.failed} order(s) - proceeding anyway`, 'warning')
+        }
+        // Trigger immediate refresh of OpenOrdersPanel
+        window.dispatchEvent(new Event('refresh-orders'))
+      } catch (error) {
+        console.error('Failed to cancel open orders:', error)
+        addToast('Failed to cancel some open orders - proceeding anyway', 'warning')
+        // Still trigger refresh to show current state
+        window.dispatchEvent(new Event('refresh-orders'))
+      } finally {
+        setIsCancellingOrders(false)
+      }
+
+      // Then clear old session data (proceed even if some orders failed)
       const session = await tradingSessionService.getResumableSession(walletAddress.toLowerCase())
       if (session) {
         await tradingSessionService.endSession(session.id)
       }
     }
 
-    // Clear the resumable session flag - this will show "Start Trading" button
+    // Close dialog and clear the resumable session flag
+    setShowNewSessionConfirm(false)
     setHasResumableSession(false)
 
     addToast('Session cleared. Click Start Trading to begin.', 'info')
@@ -666,15 +690,25 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
               <h3>Create New Session</h3>
             </div>
             <div className="confirm-dialog-body">
-              <p>You are creating a new session. This will wipe all your old session data and start fresh.</p>
-              <p>Are you sure you want to proceed?</p>
+              {isCancellingOrders ? (
+                <p>Cancelling open orders...</p>
+              ) : (
+                <>
+                  <p>You are creating a new session. This will:</p>
+                  <ul>
+                    <li>Cancel all your open orders</li>
+                    <li>Clear your old session data</li>
+                  </ul>
+                  <p>Are you sure you want to proceed?</p>
+                </>
+              )}
             </div>
             <div className="confirm-dialog-actions">
-              <button onClick={handleCancelNewSession} className="cancel-btn">
+              <button onClick={handleCancelNewSession} className="cancel-btn" disabled={isCancellingOrders}>
                 Cancel
               </button>
-              <button onClick={handleConfirmNewSession} className="confirm-btn">
-                Confirm
+              <button onClick={handleConfirmNewSession} className="confirm-btn" disabled={isCancellingOrders}>
+                {isCancellingOrders ? 'Processing...' : 'Confirm'}
               </button>
             </div>
           </div>
