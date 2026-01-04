@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { WagmiProvider } from 'wagmi'
+import { Analytics } from '@vercel/analytics/react'
 import Dashboard from './components/Dashboard'
 import { WalletConnectionWatcher } from './components/WalletConnectionWatcher'
 import { walletService, wagmiConfig } from './services/walletService'
@@ -50,6 +51,7 @@ function App() {
             onDisconnect={() => walletService.disconnect()}
           />
         </div>
+        <Analytics />
       </ToastProvider>
     </WagmiProvider>
   )
