@@ -39,14 +39,19 @@ export default function SignMessageDialog({ isOpen, onClose }: SignMessageDialog
 
   return (
     <div className="dialog-overlay" onClick={handleCancel}>
-      <div className="dialog-content sign-message-dialog" onClick={(e) => e.stopPropagation()}>
-        <h2>Sign Message</h2>
+      <div
+        className="dialog-content sign-message-dialog"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2>Verify Wallet Ownership</h2>
         <div className="sign-message-content">
           <p>
-            Sign a message to establish a secure connection with your wallet.
+            Sign this message to securely connect your wallet and create a
+            trading session.
           </p>
           <p className="sign-message-note">
-            This signature is used to create a trading session and does not cost any gas.
+            This is not a blockchain transaction, does not cost any gas, and
+            does not grant permission to move funds from your wallet.
           </p>
         </div>
         <div className="dialog-actions">
@@ -62,10 +67,10 @@ export default function SignMessageDialog({ isOpen, onClose }: SignMessageDialog
             onClick={handleSign}
             disabled={isLoading}
           >
-            {isLoading ? 'Waiting for signature...' : 'Sign Message'}
+            {isLoading ? "Waiting for signature..." : "Sign & Continue"}
           </button>
         </div>
       </div>
     </div>
-  )
+  );
 }
