@@ -603,10 +603,11 @@ class AuthFlowService {
       const markets = await marketService.fetchMarkets()
       // Exclude contract ID that O2 doesn't include (from a market not in O2's whitelist)
       // Use markets in their original order (O2 doesn't sort them)
-      const EXCLUDED_CONTRACT_ID = '0xca78cbd896cd09f104cd32448e0ef155dace8a0a9ea21ad5f4f9435800038b9b'
-      const marketContractIds = markets
-        .filter((m) => m.contract_id.toLowerCase() !== EXCLUDED_CONTRACT_ID.toLowerCase())
-        .map((m) => m.contract_id)
+      // const EXCLUDED_CONTRACT_ID = '0xca78cbd896cd09f104cd32448e0ef155dace8a0a9ea21ad5f4f9435800038b9b'
+      // const marketContractIds = markets
+      //   .filter((m) => m.contract_id.toLowerCase() !== EXCLUDED_CONTRACT_ID.toLowerCase())
+      //   .map((m) => m.contract_id)
+      const marketContractIds = markets.map((m) => m.contract_id)
       // Include accounts_registry_id at the end if available (matching O2's pattern)
       const accountsRegistryId = marketService.getAccountsRegistryId()
       const contractIds = accountsRegistryId

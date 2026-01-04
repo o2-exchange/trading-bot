@@ -199,10 +199,17 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     if (!isTrading) return
 
     // Subscribe to trading engine status updates
-    const unsubscribe = tradingEngine.onStatus((message, type) => {
+    const unsubscribe = tradingEngine.onStatus((message, type, verbosity = 'simple') => {
       console.log(`[TradingEngine] ${type}:`, message)
-      // Show status messages as toasts
-      addToast(message, type)
+
+      // Only show toast for successful order placements and fills
+      // Skip debug messages, errors, warnings, and other info messages
+      const isOrderMessage = message.includes('order placed') || message.includes('filled')
+      const isSuccessOrInfo = type === 'success' || type === 'info'
+
+      if (verbosity === 'simple' && isOrderMessage && isSuccessOrInfo) {
+        addToast(message, type)
+      }
     })
 
     return unsubscribe
