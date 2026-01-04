@@ -102,7 +102,7 @@
 
 /* Download Button */
 .console-download-btn {
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 600;
   font-family: inherit;
   padding: 2px 8px;
@@ -112,7 +112,8 @@
   color: var(--muted-foreground);
   cursor: pointer;
   transition: all 0.2s ease;
-  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .console-download-btn:hover {

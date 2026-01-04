@@ -425,20 +425,22 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
       )}
 
       <div className="dashboard-header">
-          <h1>o2 Trading Bot <span className="alpha-badge">Alpha</span></h1>
-          <div className="header-tabs">
-            <button
-              className={activeTab === 'dashboard' ? 'active' : ''}
-              onClick={() => setActiveTab('dashboard')}
-            >
-              Dashboard
-            </button>
-            <button
-              className={activeTab === 'trades' ? 'active' : ''}
-              onClick={() => setActiveTab('trades')}
-            >
-              Trades
-            </button>
+          <div className="header-left">
+            <h1>o2 Trading Bot <span className="alpha-badge">Alpha</span></h1>
+            <div className="header-tabs">
+              <button
+                className={activeTab === 'dashboard' ? 'active' : ''}
+                onClick={() => setActiveTab('dashboard')}
+              >
+                Dashboard
+              </button>
+              <button
+                className={activeTab === 'trades' ? 'active' : ''}
+                onClick={() => setActiveTab('trades')}
+              >
+                Trades
+              </button>
+            </div>
           </div>
           <div className="header-actions">
             <button
