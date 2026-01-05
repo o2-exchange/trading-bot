@@ -93,9 +93,23 @@ class WalletService {
     await fuel.selectConnector(connector.name)
 
     // Connect to the wallet
+    // NOTE: BakoSafeConnector has a known bug where it returns a boolean as an error
+    // even when the connection succeeds. We handle this by catching the error and
+    // checking if we can still get the account.
+    // See: https://github.com/FuelLabs/fuels-wallet/issues - can remove once fixed
     console.log('[WalletService] Calling fuel.connect()...')
-    await fuel.connect()
-    console.log('[WalletService] fuel.connect() completed')
+    try {
+      await fuel.connect()
+      console.log('[WalletService] fuel.connect() completed')
+    } catch (error) {
+      // BakoSafe workaround: it incorrectly returns boolean as error even on success
+      if (walletType === 'bako-safe' && typeof error === 'boolean') {
+        console.log('[WalletService] BakoSafe returned boolean error, checking if connection succeeded...')
+        // Fall through to account retrieval - connection might have succeeded
+      } else {
+        throw error
+      }
+    }
 
     // Get the account
     const account = await fuel.currentAccount()

@@ -11,6 +11,15 @@ import { Session, SessionCreationParams, SessionKey } from '../types/session'
 import { db } from './dbService'
 import { encrypt, decrypt } from '../utils/encryption'
 import { DEFAULT_SESSION_EXPIRY_MS, FUEL_PROVIDER_URL } from '../constants/o2Constants'
+
+/**
+ * Determines if a wallet connector supports the sponsored (API-based) session creation flow.
+ * Bako Safe and Fuelet don't support signMessage(), so they must use on-chain transaction flow.
+ */
+function supportsSponsorship(walletType: string): boolean {
+  const unsupportedWallets = ['bako-safe', 'fuelet']
+  return !unsupportedWallets.includes(walletType)
+}
 import { useSessionStore } from '../stores/useSessionStore'
 import { SessionInput } from '../types/contracts/TradeAccount'
 import { TradingAccount } from '../types/tradingAccount'
@@ -103,71 +112,96 @@ class SessionService {
     await tradeAccountManager.fetchNonce()
     console.log('[SessionService] Nonce:', tradeAccountManager.nonce.toString())
 
-    // Create session via API (sponsored flow) - O2 pays for gas
     // IMPORTANT: expiry must be in SECONDS (Unix timestamp), not milliseconds!
     const expiryInSeconds = expiry
       ? Math.floor(expiry / 1000)  // Convert ms to seconds if provided
       : Math.floor(Date.now() / 1000) + Math.floor(DEFAULT_SESSION_EXPIRY_MS / 1000)
-    console.log('[SessionService] Creating session via API (sponsored flow)...')
     console.log('[SessionService] Expiry timestamp (seconds):', expiryInSeconds, '- Date:', new Date(expiryInSeconds * 1000).toISOString())
+
+    // Check if wallet supports sponsored flow (message signing)
+    // Bako Safe and Fuelet don't support signMessage(), so they must use on-chain transaction flow
+    const useSponsorship = supportsSponsorship(connectedWallet.type)
+    console.log('[SessionService] Wallet type:', connectedWallet.type, '- Supports sponsorship:', useSponsorship)
 
     let createdSession: SessionInput
     try {
-      // Sponsored flow for all wallets: Sign message, O2 API pays gas
-      console.log('[SessionService] Using SPONSORED flow (API-based)')
+      if (useSponsorship) {
+        // SPONSORED FLOW: Sign message, O2 API pays gas
+        // Works for Fuel Wallet, MetaMask, and other wallets that support signMessage()
+        console.log('[SessionService] Using SPONSORED flow (API-based)')
 
-      // Generate session params (this will prompt user to sign)
-      const sessionParams = await tradeAccountManager.api_CreateSessionParams(contractIds, expiryInSeconds)
-      console.log('[SessionService] ✅ Session params generated (user signed!)')
-      console.log('[SessionService] Session params:', {
-        contract_id: sessionParams.contract_id,
-        session_id: typeof sessionParams.session_id === 'object'
-          ? (sessionParams.session_id as any)?.Address || JSON.stringify(sessionParams.session_id)
-          : sessionParams.session_id,
-        nonce: sessionParams.nonce,
-        expiry: sessionParams.expiry,
-        contract_ids_count: sessionParams.contract_ids?.length
-      })
-
-      // Convert owner address to B256 format for O2-Owner-Id header
-      let ownerIdForHeader: string
-      if (connectedWallet.isFuel) {
-        // Fuel wallet - convert directly to B256
-        const fuelAddress = Address.fromString(connectedWallet.address)
-        ownerIdForHeader = fuelAddress.toB256()
-        console.log('[SessionService] Fuel wallet - owner ID for header:', ownerIdForHeader)
-      } else {
-        // Ethereum wallet - pad to 32 bytes then convert to B256
-        const paddedAddress = pad(normalizedAddress as `0x${string}`, { size: BYTES_32 })
-        const fuelAddress = Address.fromString(paddedAddress)
-        ownerIdForHeader = fuelAddress.toB256()
-        console.log('[SessionService] Ethereum wallet - owner ID for header:', ownerIdForHeader)
-      }
-
-      // Create session via API
-      console.log('[SessionService] Calling O2 API to create session...')
-      await o2ApiService.createSession(
-        {
+        // Generate session params (this will prompt user to sign a message)
+        const sessionParams = await tradeAccountManager.api_CreateSessionParams(contractIds, expiryInSeconds)
+        console.log('[SessionService] ✅ Session params generated (user signed!)')
+        console.log('[SessionService] Session params:', {
           contract_id: sessionParams.contract_id,
-          session_id: sessionParams.session_id as any,
-          signature: sessionParams.signature as any,
+          session_id: typeof sessionParams.session_id === 'object'
+            ? (sessionParams.session_id as any)?.Address || JSON.stringify(sessionParams.session_id)
+            : sessionParams.session_id,
           nonce: sessionParams.nonce,
           expiry: sessionParams.expiry,
-          contract_ids: sessionParams.contract_ids,
-        },
-        ownerIdForHeader
-      )
-      console.log('[SessionService] ✅ Session API call successful')
+          contract_ids_count: sessionParams.contract_ids?.length
+        })
 
-      // Build the session object for local storage
-      createdSession = {
-        session_id: {
-          Address: { bits: sessionAddress },
-        },
-        expiry: {
-          unix: bn(expiryInSeconds.toString()),
-        },
-        contract_ids: contractIds.map((id) => ({ bits: id })),
+        // Convert owner address to B256 format for O2-Owner-Id header
+        let ownerIdForHeader: string
+        if (connectedWallet.isFuel) {
+          // Fuel wallet - convert directly to B256
+          const fuelAddress = Address.fromString(connectedWallet.address)
+          ownerIdForHeader = fuelAddress.toB256()
+          console.log('[SessionService] Fuel wallet - owner ID for header:', ownerIdForHeader)
+        } else {
+          // Ethereum wallet - pad to 32 bytes then convert to B256
+          const paddedAddress = pad(normalizedAddress as `0x${string}`, { size: BYTES_32 })
+          const fuelAddress = Address.fromString(paddedAddress)
+          ownerIdForHeader = fuelAddress.toB256()
+          console.log('[SessionService] Ethereum wallet - owner ID for header:', ownerIdForHeader)
+        }
+
+        // Create session via API
+        console.log('[SessionService] Calling O2 API to create session...')
+        await o2ApiService.createSession(
+          {
+            contract_id: sessionParams.contract_id,
+            session_id: sessionParams.session_id as any,
+            signature: sessionParams.signature as any,
+            nonce: sessionParams.nonce,
+            expiry: sessionParams.expiry,
+            contract_ids: sessionParams.contract_ids,
+          },
+          ownerIdForHeader
+        )
+        console.log('[SessionService] ✅ Session API call successful')
+
+        // Build the session object for local storage
+        createdSession = {
+          session_id: {
+            Address: { bits: sessionAddress },
+          },
+          expiry: {
+            unix: bn(expiryInSeconds.toString()),
+          },
+          contract_ids: contractIds.map((id) => ({ bits: id })),
+        }
+
+        // Try to recover session to verify
+        try {
+          const recoveredSession = await tradeAccountManager.recoverSession()
+          tradeAccountManager.setSession(recoveredSession)
+        } catch (error) {
+          // Session already set, recovery is just verification
+          console.warn('Could not recover session immediately (using local session)', error)
+        }
+      } else {
+        // NON-SPONSORED FLOW: Create session on-chain via transaction
+        // Required for Bako Safe and Fuelet which don't support signMessage()
+        // User pays gas but transaction signing works with these wallets
+        console.log('[SessionService] Using NON-SPONSORED flow (on-chain transaction)')
+        console.log('[SessionService] This wallet does not support message signing, using transaction-based session creation')
+
+        // Create session directly on-chain (this prompts user to sign a TRANSACTION, not a message)
+        createdSession = await tradeAccountManager.newSession(contractIds, expiryInSeconds)
+        console.log('[SessionService] ✅ Session created on-chain successfully')
       }
     } catch (error: any) {
       console.error('[SessionService] ❌ Error creating session:', error)
@@ -175,15 +209,6 @@ class SessionService {
         console.error('[SessionService] API Error:', JSON.stringify(error.response.data, null, 2))
       }
       throw new Error(`Failed to create session: ${error.message}`)
-    }
-
-    // Session was already set in newSession(), but try to recover to verify
-    try {
-      const recoveredSession = await tradeAccountManager.recoverSession()
-      tradeAccountManager.setSession(recoveredSession)
-    } catch (error) {
-      // Session already set by newSession, recovery is just verification
-      console.warn('Could not recover session immediately (using local session)', error)
     }
 
     // Update nonce in database (newSession already incremented it in memory)
