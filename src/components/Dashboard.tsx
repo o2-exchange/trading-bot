@@ -21,6 +21,7 @@ import OpenOrdersPanel from './OpenOrdersPanel'
 import WelcomeModal from './WelcomeModal'
 import DepositDialog from './DepositDialog'
 import ConnectWalletDialog from './ConnectWalletDialog'
+import ProModePage from './proMode/ProModePage'
 import { balanceService } from '../services/balanceService'
 import { TradingAccountBalances } from '../types/tradingAccount'
 import { filterMarkets } from '../utils/marketFilters'
@@ -33,7 +34,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ isWalletConnected, onDisconnect }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'trades'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'trades' | 'promode'>('dashboard')
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [tradingAccount, setTradingAccount] = useState<any>(null)
   const [isEligible, setIsEligible] = useState<boolean | null>(null)
@@ -451,6 +452,13 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
               >
                 Trades
               </button>
+              <button
+                className={`pro-mode-tab ${activeTab === 'promode' ? 'active' : ''}`}
+                onClick={() => setActiveTab('promode')}
+              >
+                Pro Mode
+                <span className="pro-badge">NEW</span>
+              </button>
             </div>
           </div>
           <div className="header-actions">
@@ -686,6 +694,11 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
 
         {activeTab === 'trades' && (
           <TradeHistory />
+        )}
+
+        {/* Pro Mode tab */}
+        {activeTab === 'promode' && (
+          <ProModePage />
         )}
       </div>
 
