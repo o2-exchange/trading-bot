@@ -29,7 +29,7 @@ function App() {
   // Don't render until we've checked for existing connection
   if (!isInitialized) {
     return (
-      <WagmiProvider config={wagmiConfig}>
+      <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
         <ToastProvider>
           <div className="app">
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -42,7 +42,7 @@ function App() {
   }
 
   return (
-    <WagmiProvider config={wagmiConfig}>
+    <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
       <ToastProvider>
         <WalletConnectionWatcher />
         <div className="app">

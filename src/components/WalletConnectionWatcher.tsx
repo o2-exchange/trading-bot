@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { useWalletStore } from '../stores/useWalletStore'
 import { walletService, fuel } from '../services/walletService'
-import { useAccount, useAccountEffect } from 'wagmi'
+import { useAccountEffect } from 'wagmi'
 import { clearUserStorageForAccountChange } from '../utils/clearUserStorage'
 import { authFlowService } from '../services/authFlowService'
 import { sessionManagerService } from '../services/sessionManagerService'
@@ -307,50 +307,6 @@ export function WalletConnectionWatcher() {
       }
     },
   })
-
-  // Watch for Ethereum account changes
-  const { address: evmAddress, isConnected: isEvmConnected, connector: evmConnector } = useAccount()
-
-  useEffect(() => {
-    const current = useWalletStore.getState().connectedWallet
-
-    if (isEvmConnected && evmAddress && evmConnector) {
-      // CRITICAL: Ignore wagmi connections if we already have a Fuel wallet
-      // Fuel wallet extensions inject Ethereum providers, causing wagmi to detect them
-      if (current?.isFuel) {
-        console.log('[WalletWatcher] wagmi detected EVM connection but Fuel wallet already connected - ignoring')
-        return
-      }
-
-      console.log('[WalletWatcher] wagmi detected EVM connection')
-      handleConnect(evmAddress, false, evmConnector, evmConnector.name)
-    } else if (!isEvmConnected) {
-      console.log('[WalletWatcher] wagmi useAccount - isEvmConnected:', isEvmConnected)
-      console.log('[WalletWatcher] wagmi useAccount - current wallet:', current)
-      console.log('[WalletWatcher] wagmi useAccount - current?.isFuel:', current?.isFuel)
-      console.log('[WalletWatcher] wagmi useAccount - typeof current?.isFuel:', typeof current?.isFuel)
-
-      // CRITICAL: Only disconnect if wallet is EXPLICITLY a non-Fuel wallet
-      // Using === false to avoid disconnecting when isFuel is undefined
-      if (current && current.isFuel === false) {
-        // CRITICAL: Don't disconnect during critical auth flow operations
-        // Wagmi can briefly report disconnected during/after signing in MetaMask
-        const authState = authFlowService.getState().state
-        const criticalStates = ['creatingSession', 'awaitingWelcome', 'awaitingTerms']
-        if (criticalStates.includes(authState)) {
-          console.log('[WalletWatcher] wagmi reported disconnect but auth flow in critical state:', authState, '- ignoring')
-          return
-        }
-
-        console.log('[WalletWatcher] wagmi triggering disconnect for EVM wallet')
-        handleDisconnect('wagmi.useAccount (isConnected=false)')
-      } else if (current && current.isFuel === true) {
-        console.log('[WalletWatcher] wagmi ignoring disconnect - Fuel wallet is connected')
-      } else {
-        console.log('[WalletWatcher] wagmi ignoring disconnect - no wallet or unclear state')
-      }
-    }
-  }, [isEvmConnected, evmAddress, evmConnector, handleConnect, handleDisconnect])
 
   return null
 }

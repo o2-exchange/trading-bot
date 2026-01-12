@@ -35,6 +35,7 @@ const BASE_SEPOLIA_RPC_URL = ((import.meta as any).env?.VITE_BASE_SEPOLIA_RPC_UR
 
 export const wagmiConfig = createConfig({
   chains: [baseSepolia, sepolia, base, mainnet],
+  syncConnectedChain: false, // Disable automatic chain syncing to prevent polling spam
   transports: {
     [sepolia.id]: http(SEPOLIA_RPC_URL),
     [baseSepolia.id]: http(BASE_SEPOLIA_RPC_URL),
@@ -42,7 +43,10 @@ export const wagmiConfig = createConfig({
     [mainnet.id]: http(MAINNET_RPC_URL),
   },
   connectors: [
-    injected(),
+    // Disable shimDisconnect to stop eth_accounts polling spam from injected providers
+    injected({
+      shimDisconnect: false,
+    }),
     ...(CONNECTORS_WC_PROJECT_ID
       ? [
           walletConnect({
