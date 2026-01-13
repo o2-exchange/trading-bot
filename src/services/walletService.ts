@@ -43,10 +43,7 @@ export const wagmiConfig = createConfig({
     [mainnet.id]: http(MAINNET_RPC_URL),
   },
   connectors: [
-    // Disable shimDisconnect to stop eth_accounts polling spam from injected providers
-    injected({
-      shimDisconnect: false,
-    }),
+    injected(),
     ...(CONNECTORS_WC_PROJECT_ID
       ? [
           walletConnect({

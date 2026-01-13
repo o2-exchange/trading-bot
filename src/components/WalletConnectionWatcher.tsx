@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { useWalletStore } from '../stores/useWalletStore'
-import { walletService, fuel } from '../services/walletService'
-import { useAccountEffect } from 'wagmi'
+import { walletService, fuel, wagmiConfig } from '../services/walletService'
+import { watchAccount } from 'wagmi/actions'
 import { clearUserStorageForAccountChange } from '../utils/clearUserStorage'
 import { authFlowService } from '../services/authFlowService'
 import { sessionManagerService } from '../services/sessionManagerService'
@@ -18,6 +18,7 @@ export function WalletConnectionWatcher() {
   const setConnectedWallet = useWalletStore((state) => state.setConnectedWallet)
   const clearWallet = useWalletStore((state) => state.clearWallet)
   const previousAddressRef = useRef<string | null>(null)
+  const initialCheckDoneRef = useRef(false)
 
   // Handle wallet disconnect
   const handleDisconnect = useCallback((source?: string) => {
@@ -242,6 +243,10 @@ export function WalletConnectionWatcher() {
 
     // Check initial state on mount (no polling after this!)
     const checkInitialState = async () => {
+      // Prevent duplicate checks (e.g., from React StrictMode double-mounting)
+      if (initialCheckDoneRef.current) return
+      initialCheckDoneRef.current = true
+
       try {
         const isConnected = await fuel.isConnected()
         if (isConnected) {
@@ -284,29 +289,55 @@ export function WalletConnectionWatcher() {
       fuel.off(fuel.events.currentAccount, handleAccountChangeEvent)
       fuel.off(fuel.events.accounts, handleAccountsEvent)
     }
-  }, [handleConnect, handleDisconnect])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Run only on mount - callbacks are stable via useCallback with stable deps
 
-  // Watch Ethereum wallet connection via wagmi
-  useAccountEffect({
-    onConnect({ address, connector }) {
-      if (address && connector) {
-        // CRITICAL: Ignore wagmi connections if we already have a Fuel wallet
-        const current = useWalletStore.getState().connectedWallet
-        if (current?.isFuel) {
-          console.log('[WalletWatcher] wagmi onConnect but Fuel wallet already connected - ignoring')
-          return
+  // Watch Ethereum wallet connection via wagmi watchAccount (subscription-based like O2)
+  // This is more efficient than useAccountEffect as it only fires on actual state changes
+  useEffect(() => {
+    let previousAddress: string | null = null
+    let previousConnectorName: string | null = null
+
+    const unsubscribe = watchAccount(wagmiConfig, {
+      onChange: (data, prevData) => {
+        // Only handle actual changes
+        if (data.status === 'connected' && data.address && data.connector) {
+          const current = useWalletStore.getState().connectedWallet
+          const normalizedAddress = data.address.toLowerCase()
+
+          // CRITICAL: Ignore wagmi connections if we already have a Fuel wallet
+          if (current?.isFuel) {
+            return
+          }
+
+          // CRITICAL: If already connected to an EVM wallet, only accept updates from the SAME connector
+          // This prevents Rabby/MetaMask/Phantom from fighting over the active account
+          if (current && current.isFuel === false && current.type !== data.connector.name) {
+            return
+          }
+
+          // Only process if address or connector actually changed
+          if (normalizedAddress !== previousAddress || data.connector.name !== previousConnectorName) {
+            previousAddress = normalizedAddress
+            previousConnectorName = data.connector.name
+            handleConnect(data.address, false, data.connector, data.connector.name)
+          }
+        } else if (data.status === 'disconnected' && prevData?.status === 'connected') {
+          // Handle disconnect
+          const current = useWalletStore.getState().connectedWallet
+          if (current && current.isFuel === false) {
+            previousAddress = null
+            previousConnectorName = null
+            handleDisconnect('wagmi.watchAccount (disconnected)')
+          }
         }
-        handleConnect(address, false, connector, connector.name)
-      }
-    },
-    onDisconnect() {
-      const current = useWalletStore.getState().connectedWallet
-      // CRITICAL: Only disconnect if wallet is EXPLICITLY a non-Fuel wallet
-      if (current && current.isFuel === false) {
-        handleDisconnect('wagmi.onDisconnect')
-      }
-    },
-  })
+      },
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [handleConnect, handleDisconnect])
 
   return null
 }
