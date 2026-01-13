@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { authFlowService } from '../services/authFlowService'
+import { walletService } from '../services/walletService'
 import { useToast } from './ToastProvider'
+import { analyticsService } from '../services/analyticsService'
 import './TermsOfUseDialog.css'
 
 interface TermsOfUseDialogProps {
@@ -11,6 +13,14 @@ interface TermsOfUseDialogProps {
 export default function TermsOfUseDialog({ isOpen, onClose }: TermsOfUseDialogProps) {
   const [accepted, setAccepted] = useState(false)
   const { addToast } = useToast()
+  const dialogOpenTimeRef = useRef<number>(0)
+
+  // Track when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      dialogOpenTimeRef.current = Date.now()
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -22,6 +32,12 @@ export default function TermsOfUseDialog({ isOpen, onClose }: TermsOfUseDialogPr
 
     try {
       await authFlowService.acceptTerms()
+
+      // Track message signed
+      const wallet = walletService.getConnectedWallet()
+      const timeToSign = dialogOpenTimeRef.current ? Date.now() - dialogOpenTimeRef.current : 0
+      analyticsService.trackMessageSigned(wallet?.address || '', timeToSign)
+
       onClose()
     } catch (error: any) {
       addToast(`Failed to accept terms: ${error.message}`, 'error')

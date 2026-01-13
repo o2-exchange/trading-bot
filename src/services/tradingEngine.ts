@@ -9,6 +9,7 @@ import { orderFulfillmentService } from './orderFulfillmentService'
 import { orderFulfillmentPolling } from './orderFulfillmentPolling'
 import { balanceService } from './balanceService'
 import { tradingSessionService } from './tradingSessionService'
+import { analyticsService } from './analyticsService'
 import { db } from './dbService'
 import { Trade } from '../types/trade'
 import { Order, OrderSide, OrderStatus } from '../types/order'
@@ -320,6 +321,19 @@ class TradingEngine {
     // Setup order cancel listener to update context when orders are cancelled
     this.setupOrderCancelListener()
 
+    // Track session started
+    const marketPairs = Array.from(this.marketConfigs.values()).map(mc =>
+      `${mc.market.base.symbol}/${mc.market.quote.symbol}`
+    )
+    const firstSession = Array.from(this.marketConfigs.values())[0]?.sessionId
+    analyticsService.trackSessionStarted(
+      firstSession || `${this.ownerAddress}-${Date.now()}`,
+      this.ownerAddress!,
+      marketPairs,
+      this.marketConfigs.size,
+      resumeSession
+    )
+
     console.log('[TradingEngine] Trading engine started successfully')
   }
 
@@ -390,6 +404,20 @@ class TradingEngine {
   stop(): void {
     if (!this.isRunning) {
       return
+    }
+
+    // Track session ended
+    const firstConfig = Array.from(this.marketConfigs.values())[0]
+    if (firstConfig?.sessionId && this.ownerAddress) {
+      const context = this.marketContexts.get(firstConfig.market.market_id)
+      analyticsService.trackSessionEnded(
+        firstConfig.sessionId,
+        this.ownerAddress,
+        context?.tradeCount || 0,
+        context?.totalVolume || 0,
+        context?.realizedPnL || 0,
+        'user_stopped'
+      )
     }
 
     this.isRunning = false
@@ -924,6 +952,21 @@ class TradingEngine {
               const statusMsg = `${pair} ${orderType}: ${orderExec.side} order placed for ${amount} ${asset} at ${orderPrice}`
 
               this.emitStatus(statusMsg, 'info')
+
+              // Track order placed
+              const priceUsd = parseFloat(orderExec.priceHuman || '0')
+              const quantityBase = parseFloat(orderExec.quantityHuman || '0')
+              analyticsService.trackOrderPlaced(
+                orderExec.orderId,
+                marketConfig.sessionId || '',
+                this.ownerAddress!,
+                pair,
+                orderExec.side as 'Buy' | 'Sell',
+                orderExec.isLimitOrder ? 'Limit' : 'Market',
+                priceUsd,
+                quantityBase,
+                priceUsd * quantityBase
+              )
 
               // Note: Trade recording moved to fill detection section (recordConfirmedFill)
               // This ensures accurate trade count based on confirmed fills, not order placements

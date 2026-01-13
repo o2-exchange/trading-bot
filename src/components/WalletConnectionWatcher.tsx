@@ -5,6 +5,7 @@ import { watchAccount } from 'wagmi/actions'
 import { clearUserStorageForAccountChange } from '../utils/clearUserStorage'
 import { authFlowService } from '../services/authFlowService'
 import { sessionManagerService } from '../services/sessionManagerService'
+import { analyticsService } from '../services/analyticsService'
 
 /**
  * Watches wallet connections and automatically updates the store
@@ -70,6 +71,9 @@ export function WalletConnectionWatcher() {
       isFuel,
       connector,
     })
+
+    // Track wallet connected and identify user
+    analyticsService.trackWalletConnected(normalizedAddress, type, !isFuel)
 
     previousAddressRef.current = normalizedAddress
   }, [setConnectedWallet])

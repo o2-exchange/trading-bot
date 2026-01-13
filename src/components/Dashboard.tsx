@@ -348,6 +348,23 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
   const [copied, setCopied] = useState(false)
   const [copiedAccountField, setCopiedAccountField] = useState<string | null>(null)
 
+  // Tab switch handler
+  const handleTabSwitch = (newTab: 'dashboard' | 'trades') => {
+    if (activeTab !== newTab) {
+      setActiveTab(newTab)
+    }
+  }
+
+  // Help button handler
+  const handleHelpClick = () => {
+    setShowWelcomeModal(true)
+  }
+
+  // Deposit dialog handler
+  const handleDepositDialogOpen = () => {
+    setShowDepositDialog(true)
+  }
+
   const handleCopyAddress = async () => {
     if (walletAddress) {
       await navigator.clipboard.writeText(walletAddress)
@@ -442,13 +459,13 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
             <div className="header-tabs">
               <button
                 className={activeTab === 'dashboard' ? 'active' : ''}
-                onClick={() => setActiveTab('dashboard')}
+                onClick={() => handleTabSwitch('dashboard')}
               >
                 Dashboard
               </button>
               <button
                 className={activeTab === 'trades' ? 'active' : ''}
-                onClick={() => setActiveTab('trades')}
+                onClick={() => handleTabSwitch('trades')}
               >
                 Trades
               </button>
@@ -464,7 +481,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
           <div className="header-actions">
             <button
               className="help-button"
-              onClick={() => setShowWelcomeModal(true)}
+              onClick={handleHelpClick}
               title="View tutorial"
             >
               ?

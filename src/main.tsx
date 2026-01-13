@@ -2,7 +2,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { PostHogProvider } from 'posthog-js/react'
 import App from './App.tsx'
+import { analyticsService } from './services/analyticsService'
 import './index.css'
+
+// Initialize analytics service on app load
+analyticsService.initialize()
 
 const posthogOptions = {
   api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
