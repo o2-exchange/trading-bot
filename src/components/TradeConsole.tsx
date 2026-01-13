@@ -262,6 +262,7 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
         verbosity: msg.verbosity || 'simple'
       }))
     }
+
     const blob = new Blob([JSON.stringify(logData, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -269,6 +270,13 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
     a.download = `trading-logs-${Date.now()}.json`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Handle console mode toggle
+  const handleConsoleModeToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const newMode = consoleMode === 'simple' ? 'debug' : 'simple'
+    setConsoleMode(newMode)
   }
 
   // Get icon for message type
@@ -301,10 +309,7 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
           </button>
           <button
             className={`console-mode-toggle ${consoleMode}`}
-            onClick={(e) => {
-              e.stopPropagation()
-              setConsoleMode(prev => prev === 'simple' ? 'debug' : 'simple')
-            }}
+            onClick={handleConsoleModeToggle}
             title={consoleMode === 'simple' ? 'Click for debug mode (more details)' : 'Click for simple mode (essential only)'}
           >
             {consoleMode === 'simple' ? 'Simple Mode' : 'Debug Mode'}

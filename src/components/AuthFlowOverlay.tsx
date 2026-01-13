@@ -26,6 +26,7 @@ export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: Auth
     const unsubscribe = authFlowService.subscribe((context) => {
       if (mounted) {
         console.log('Auth flow state changed:', context.state, context.error)
+
         setAuthState(context)
 
         // Notify parent of state changes

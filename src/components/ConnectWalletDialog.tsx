@@ -91,19 +91,20 @@ export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProp
   }
 
   const handleConnectEthereum = async (connectorName?: string) => {
-    setConnecting(connectorName || 'ethereum')
+    const walletType = connectorName || 'ethereum'
+    setConnecting(walletType)
 
     // Timeout to prevent button getting stuck
     const timeout = setTimeout(() => {
       setConnecting(null)
-        addToast('Connection timed out. Please try again.', 'error')
-    }, 50000) // 30 second timeout
+      addToast('Connection timed out. Please try again.', 'error')
+    }, 50000) // 50 second timeout
 
     try {
       await walletService.connectEthereumWallet(connectorName)
       clearTimeout(timeout)
       addToast('Wallet connected successfully', 'success')
-        onClose()
+      onClose()
     } catch (error: any) {
       clearTimeout(timeout)
       addToast(`Failed to connect wallet: ${error.message}`, 'error')
