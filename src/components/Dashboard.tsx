@@ -21,6 +21,7 @@ import OpenOrdersPanel from './OpenOrdersPanel'
 import WelcomeModal from './WelcomeModal'
 import DepositDialog from './DepositDialog'
 import ConnectWalletDialog from './ConnectWalletDialog'
+import TutorialsPanel from './TutorialsPanel'
 import { balanceService } from '../services/balanceService'
 import { TradingAccountBalances } from '../types/tradingAccount'
 import { filterMarkets } from '../utils/marketFilters'
@@ -33,7 +34,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ isWalletConnected, onDisconnect }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'trades'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'trades' | 'tutorials'>('dashboard')
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [tradingAccount, setTradingAccount] = useState<any>(null)
   const [isEligible, setIsEligible] = useState<boolean | null>(null)
@@ -348,7 +349,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
   const [copiedAccountField, setCopiedAccountField] = useState<string | null>(null)
 
   // Tab switch handler
-  const handleTabSwitch = (newTab: 'dashboard' | 'trades') => {
+  const handleTabSwitch = (newTab: 'dashboard' | 'trades' | 'tutorials') => {
     if (activeTab !== newTab) {
       setActiveTab(newTab)
     }
@@ -467,6 +468,12 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                 onClick={() => handleTabSwitch('trades')}
               >
                 Trades
+              </button>
+              <button
+                className={activeTab === 'tutorials' ? 'active' : ''}
+                onClick={() => handleTabSwitch('tutorials')}
+              >
+                Tutorials
               </button>
             </div>
           </div>
@@ -703,6 +710,10 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
 
         {activeTab === 'trades' && (
           <TradeHistory />
+        )}
+
+        {activeTab === 'tutorials' && (
+          <TutorialsPanel />
         )}
       </div>
 

@@ -1,0 +1,371 @@
+.tutorials-panel {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Back Button */
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 20px;
+}
+
+.back-button:hover {
+  background: var(--muted);
+  border-color: var(--primary);
+}
+
+.back-button svg {
+  flex-shrink: 0;
+}
+
+/* Grid View Header */
+.tutorials-header {
+  margin-bottom: 24px;
+}
+
+.tutorials-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0 0 8px 0;
+}
+
+.tutorials-subtitle {
+  font-size: 14px;
+  color: var(--muted-foreground);
+  margin: 0;
+}
+
+/* Grid View */
+.tutorials-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.tutorial-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tutorial-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Video Thumbnail */
+.video-thumbnail {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.thumbnail-image {
+  width: 100%;
+  height: 130%;
+  object-fit: cover;
+  object-position: center;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.play-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.tutorial-card:hover .play-overlay {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.play-button {
+  width: 56px;
+  height: 56px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: all 0.2s;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.tutorial-card:hover .play-button {
+  background: var(--primary);
+  border-color: var(--primary);
+  transform: scale(1.1);
+}
+
+.play-button svg {
+  margin-left: 3px;
+}
+
+/* Tutorial Info (Grid) */
+.tutorial-info {
+  padding: 16px;
+}
+
+.tutorial-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0 0 8px 0;
+  line-height: 1.3;
+}
+
+.tutorial-description {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  margin: 0;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Detail View */
+.tutorial-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.tutorial-detail-video {
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  width: 65%;
+  margin: 0 auto;
+  position: relative;
+  aspect-ratio: 16 / 9;
+}
+
+.detail-video-player {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Custom thumbnail overlay before video plays */
+.video-cover {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.video-cover-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-cover-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 72px;
+  height: 72px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.2s;
+}
+
+.video-cover:hover .video-cover-play {
+  background: var(--primary);
+  border-color: var(--primary);
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+.video-cover-play svg {
+  margin-left: 4px;
+}
+
+.tutorial-detail-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.tutorial-detail-info {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.tutorial-detail-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0 0 12px 0;
+}
+
+.tutorial-detail-description {
+  font-size: 14px;
+  color: var(--muted-foreground);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Quick Start Section */
+.quick-start-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.quick-start-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0 0 20px 0;
+}
+
+.quick-start-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px 0;
+  counter-reset: step-counter;
+}
+
+.quick-start-steps li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 12px 12px 48px;
+  position: relative;
+  border-left: 2px solid var(--border);
+  margin-left: 12px;
+}
+
+.quick-start-steps li:last-child {
+  border-left-color: transparent;
+}
+
+.quick-start-steps li::before {
+  counter-increment: step-counter;
+  content: counter(step-counter);
+  position: absolute;
+  left: -13px;
+  top: 10px;
+  width: 24px;
+  height: 24px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.step-desc {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  line-height: 1.4;
+}
+
+.quick-start-note {
+  font-size: 14px;
+  color: var(--foreground);
+  margin: 0 0 12px 0;
+  padding: 12px;
+  background: var(--secondary);
+  border-radius: 6px;
+}
+
+.experimental-warning {
+  font-size: 13px;
+  color: var(--warning);
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 6px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .tutorial-detail-content {
+    grid-template-columns: 1fr;
+  }
+
+  .tutorial-detail-video {
+    width: 80%;
+  }
+}
+
+@media (max-width: 768px) {
+  .tutorials-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tutorials-panel {
+    padding: 16px;
+  }
+
+  .tutorial-detail-video {
+    width: 100%;
+  }
+
+  .quick-start-section {
+    padding: 16px;
+  }
+
+  .quick-start-steps li {
+    padding-left: 40px;
+  }
+
+  .tutorial-detail-info {
+    padding: 16px;
+  }
+}
