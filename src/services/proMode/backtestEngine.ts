@@ -20,6 +20,7 @@ import {
 } from '../../types/proMode/customStrategy';
 import { pyodideService } from './pyodideService';
 import { proModeDb } from './proModeDbService';
+import { externalDataService } from './externalDataService';
 
 // ============================================
 // SIMULATION STATE
@@ -122,9 +123,41 @@ class BacktestEngine {
         }],
       };
 
+      // Execute strategy ONCE with all historical data
+      console.log(`[BacktestEngine] Executing strategy on ${bars.length} bars...`);
+      onProgress?.(20);
+
+      const { signals: allSignals, error: strategyError } = await pyodideService.executeStrategy(
+        strategy,
+        bars,
+        60000 // 60 second timeout for full execution
+      );
+
+      if (strategyError) {
+        console.error(`[BacktestEngine] Strategy error: ${strategyError}`);
+        return this.createFailedResult(result, `Strategy execution error: ${strategyError}`);
+      }
+
+      console.log(`[BacktestEngine] Strategy returned ${allSignals?.length || 0} signals`);
+
+      // Create a map of signals by timestamp for efficient lookup
+      const signalsByTimestamp = new Map<number, StrategySignal[]>();
+      if (allSignals && allSignals.length > 0) {
+        for (const signal of allSignals) {
+          const ts = signal.timestamp;
+          if (!signalsByTimestamp.has(ts)) {
+            signalsByTimestamp.set(ts, []);
+          }
+          signalsByTimestamp.get(ts)!.push(signal);
+        }
+        console.log(`[BacktestEngine] Signals distributed across ${signalsByTimestamp.size} timestamps`);
+      }
+
+      onProgress?.(30);
+
       // Run simulation bar by bar
       const totalBars = bars.length;
-      let lastProgressUpdate = 0;
+      let lastProgressUpdate = 30;
 
       for (let i = 0; i < totalBars; i++) {
         if (cancelled) {
@@ -134,22 +167,12 @@ class BacktestEngine {
         }
 
         const bar = bars[i];
-        const historicalBars = bars.slice(0, i + 1);
 
-        // Execute strategy to get signals
-        const { signals, error } = await pyodideService.executeStrategy(
-          strategy,
-          historicalBars,
-          5000 // 5 second timeout per bar
-        );
-
-        if (error) {
-          console.warn(`Strategy error at bar ${i}: ${error}`);
-        }
-
-        // Process signals
-        if (signals && signals.length > 0) {
-          for (const signal of signals) {
+        // Process signals for this specific bar timestamp
+        const barSignals = signalsByTimestamp.get(bar.timestamp);
+        if (barSignals && barSignals.length > 0) {
+          console.log(`[BacktestEngine] Processing ${barSignals.length} signals at bar ${i} (ts: ${bar.timestamp})`);
+          for (const signal of barSignals) {
             this.processSignal(signal, bar, state, config);
           }
         }
@@ -182,8 +205,8 @@ class BacktestEngine {
 
         result.barsProcessed = i + 1;
 
-        // Update progress (10% to 90% for simulation)
-        const progress = 10 + Math.floor((i / totalBars) * 80);
+        // Update progress (30% to 90% for simulation)
+        const progress = 30 + Math.floor((i / totalBars) * 60);
         if (progress > lastProgressUpdate) {
           lastProgressUpdate = progress;
           result.progress = progress;
@@ -195,6 +218,8 @@ class BacktestEngine {
           }
         }
       }
+
+      console.log(`[BacktestEngine] Simulation complete. Total trades: ${state.trades.length}`);
 
       // Close any remaining position at last bar price
       const lastBar = bars[bars.length - 1];
@@ -250,19 +275,50 @@ class BacktestEngine {
   }
 
   private async loadHistoricalData(config: BacktestConfig): Promise<BarData[]> {
-    const marketId = config.dataSource.marketId || config.dataSource.symbol || '';
-    const cached = await proModeDb.historicalDataCache
-      .where('marketId')
-      .equals(marketId)
-      .first();
+    try {
+      console.log(`[BacktestEngine] Loading historical data for ${config.dataSource.type}`);
+      console.log(`[BacktestEngine] Date range: ${new Date(config.startDate).toISOString()} to ${new Date(config.endDate).toISOString()}`);
+      console.log(`[BacktestEngine] Resolution: ${config.barResolution}`);
 
-    if (cached && cached.bars) {
-      return cached.bars.filter(
-        bar => bar.timestamp >= config.startDate && bar.timestamp <= config.endDate
+      // Use external data service to fetch bars (handles caching internally)
+      const bars = await externalDataService.fetchBars(
+        config.dataSource,
+        {
+          startDate: config.startDate,
+          endDate: config.endDate,
+          resolution: config.barResolution,
+          useCache: true,
+        }
       );
-    }
 
-    return this.generateSampleData(config);
+      console.log(`[BacktestEngine] External data service returned ${bars?.length || 0} bars`);
+
+      // If we got data, return it
+      if (bars && bars.length > 0) {
+        return bars;
+      }
+
+      // Fallback to cached data in IndexedDB
+      const marketId = config.dataSource.marketId || config.dataSource.symbol || '';
+      const cached = await proModeDb.historicalDataCache
+        .where('marketId')
+        .equals(marketId)
+        .first();
+
+      if (cached && cached.bars) {
+        return cached.bars.filter(
+          bar => bar.timestamp >= config.startDate && bar.timestamp <= config.endDate
+        );
+      }
+
+      // Last resort: generate sample data for testing
+      console.warn('No external data available, generating sample data');
+      return this.generateSampleData(config);
+    } catch (error) {
+      console.error('Error loading historical data:', error);
+      // Fallback to sample data on error
+      return this.generateSampleData(config);
+    }
   }
 
   private generateSampleData(config: BacktestConfig): BarData[] {
@@ -292,7 +348,7 @@ class BacktestEngine {
 
   private getBarDuration(resolution: string): number {
     const durations: Record<string, number> = {
-      '1m': 60000, '5m': 300000, '15m': 900000,
+      '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000,
       '1h': 3600000, '4h': 14400000, '1D': 86400000,
     };
     return durations[resolution] || 3600000;
@@ -352,7 +408,8 @@ class BacktestEngine {
       if (state.position.side === 'long' && state.position.quantity > 0) {
         const sellQty = type === 'close' ? state.position.quantity : Math.min(quantity, state.position.quantity);
         const pnl = (execPrice - state.position.avgPrice) * sellQty - fee;
-        const pnlPercent = (pnl / (state.position.avgPrice * sellQty)) * 100;
+        const costBasis = state.position.avgPrice * sellQty;
+        const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
 
         state.trades.push({
           id: crypto.randomUUID(),
@@ -388,7 +445,8 @@ class BacktestEngine {
     const execPrice = bar.close;
     const fee = quantity * execPrice * config.feeRate;
     const pnl = (execPrice - state.position.avgPrice) * quantity - fee;
-    const pnlPercent = (pnl / (state.position.avgPrice * quantity)) * 100;
+    const costBasis = state.position.avgPrice * quantity;
+    const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
 
     state.trades.push({
       id: crypto.randomUUID(),
@@ -480,19 +538,31 @@ class BacktestEngine {
 
   private calculateDailyReturns(equityCurve: EquityPoint[]): number[] {
     if (equityCurve.length < 2) return [];
-    const returns: number[] = [];
-    let prevEquity = equityCurve[0].equity;
-    let currentDay = Math.floor(equityCurve[0].timestamp / 86400000);
 
-    for (let i = 1; i < equityCurve.length; i++) {
-      const day = Math.floor(equityCurve[i].timestamp / 86400000);
-      if (day > currentDay) {
-        returns.push((equityCurve[i - 1].equity - prevEquity) / prevEquity);
-        prevEquity = equityCurve[i - 1].equity;
-        currentDay = day;
+    // Group equity points by day and get end-of-day equity for each
+    const dailyEndEquity = new Map<number, number>();
+
+    for (const point of equityCurve) {
+      const day = Math.floor(point.timestamp / 86400000);
+      // Keep updating - last point of the day will be the final value
+      dailyEndEquity.set(day, point.equity);
+    }
+
+    // Convert to sorted array of daily end equities
+    const sortedDays = Array.from(dailyEndEquity.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([_, equity]) => equity);
+
+    // Calculate daily returns: (today's end / yesterday's end) - 1
+    const returns: number[] = [];
+    for (let i = 1; i < sortedDays.length; i++) {
+      const prevEquity = sortedDays[i - 1];
+      const currEquity = sortedDays[i];
+      if (prevEquity > 0) {
+        returns.push((currEquity - prevEquity) / prevEquity);
       }
     }
-    if (prevEquity > 0) returns.push((equityCurve[equityCurve.length - 1].equity - prevEquity) / prevEquity);
+
     return returns;
   }
 

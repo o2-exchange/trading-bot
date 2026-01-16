@@ -439,6 +439,37 @@
   }
 }
 
+/* Progress bar */
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 300px;
+  margin-top: 16px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+  min-width: 40px;
+}
+
 /* Backtest Config */
 .backtest-config {
   padding: 24px;
@@ -742,4 +773,507 @@
 /* Allotment overrides */
 .pro-mode-content .split-view-view {
   overflow: hidden;
+}
+
+/* Dialog Styles */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog-content {
+  background: var(--card);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.dialog-close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+.dialog-close-btn:hover {
+  color: var(--foreground);
+}
+
+.dialog-body {
+  padding: 24px;
+}
+
+.dialog-subtitle {
+  margin: 0 0 20px 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.dialog-btn {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dialog-btn.secondary {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.dialog-btn.secondary:hover {
+  background: var(--muted);
+}
+
+.dialog-btn.primary {
+  background: var(--primary);
+  border: none;
+  color: var(--primary-foreground);
+}
+
+.dialog-error {
+  padding: 12px 16px;
+  background: oklch(0.85 0.15 25 / 0.2);
+  border: 1px solid oklch(0.6 0.2 25);
+  border-radius: 6px;
+  color: oklch(0.6 0.2 25);
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+/* Export Options */
+.export-options {
+  margin-bottom: 20px;
+}
+
+.export-options h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.checkbox-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--foreground);
+}
+
+.checkbox-option input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Share Code Section */
+.share-code-section {
+  margin-bottom: 20px;
+}
+
+.share-code-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.share-code-container {
+  position: relative;
+}
+
+.share-code-textarea {
+  width: 100%;
+  height: 100px;
+  padding: 12px;
+  padding-right: 70px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--foreground);
+  font-family: monospace;
+  font-size: 12px;
+  resize: none;
+}
+
+.copy-code-btn {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 6px 12px;
+  background: var(--primary);
+  border: none;
+  border-radius: 4px;
+  color: var(--primary-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.share-code-hint {
+  margin: 8px 0 0 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* Export Actions */
+.export-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-btn {
+  padding: 12px 16px;
+  background: var(--primary);
+  border: none;
+  border-radius: 6px;
+  color: var(--primary-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.export-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.export-btn.secondary {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+/* Import Tabs */
+.import-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.import-tab {
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.import-tab:hover {
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.import-tab.active {
+  color: var(--foreground);
+  background: var(--secondary);
+  border-bottom: 2px solid var(--primary);
+}
+
+/* Import Section */
+.import-section {
+  margin-bottom: 20px;
+}
+
+.import-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.file-drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 16px;
+}
+
+.file-drop-zone:hover {
+  border-color: var(--primary);
+  background: var(--secondary);
+}
+
+.file-drop-zone .upload-icon,
+.file-drop-zone .file-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.file-drop-zone p {
+  margin: 4px 0;
+  color: var(--foreground);
+}
+
+.file-drop-zone .hint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.selected-file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-name {
+  font-weight: 500;
+}
+
+.file-size {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.share-code-input {
+  width: 100%;
+  padding: 12px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--foreground);
+  font-family: monospace;
+  font-size: 12px;
+  resize: none;
+  margin-bottom: 16px;
+}
+
+.clipboard-info {
+  text-align: center;
+  padding: 30px 20px;
+  margin-bottom: 16px;
+}
+
+.clipboard-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.clipboard-info p {
+  margin: 8px 0;
+  color: var(--foreground);
+}
+
+.clipboard-info .hint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.import-btn {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--primary);
+  border: none;
+  border-radius: 6px;
+  color: var(--primary-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.import-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Import Result */
+.import-result {
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.import-result.success {
+  background: oklch(0.85 0.15 145 / 0.2);
+  border: 1px solid oklch(0.6 0.2 145);
+}
+
+.import-result.error {
+  background: oklch(0.85 0.15 25 / 0.2);
+  border: 1px solid oklch(0.6 0.2 25);
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.result-header.success {
+  color: oklch(0.5 0.2 145);
+}
+
+.result-header.error {
+  color: oklch(0.5 0.2 25);
+}
+
+.result-icon {
+  font-size: 18px;
+}
+
+.import-errors,
+.import-warnings {
+  margin-top: 8px;
+}
+
+.import-error,
+.import-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.import-error {
+  color: oklch(0.5 0.2 25);
+}
+
+.import-warning {
+  color: oklch(0.5 0.15 60);
+}
+
+.error-icon,
+.warning-icon {
+  flex-shrink: 0;
+}
+
+.error-type {
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+/* Live Trading Panel */
+.live-trading-panel {
+  padding: 16px 20px;
+  overflow-y: auto;
+  height: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.live-trading-panel h2 {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.live-trading-panel .config-section {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.live-trading-panel .config-section h3 {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+}
+
+.live-trading-panel .config-section h4 {
+  margin: 0 0 8px 0;
+}
+
+.live-trading-panel .config-row {
+  gap: 12px;
+}
+
+.live-trading-panel .config-field {
+  gap: 4px;
+}
+
+.live-trading-panel .config-field input,
+.live-trading-panel .config-field select {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.live-trading-panel .metrics-grid {
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.live-trading-panel .metric-card {
+  padding: 10px 12px;
+}
+
+.live-trading-panel .metric-label {
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.live-trading-panel .metric-value {
+  font-size: 18px;
+}
+
+.live-trading-panel .metric-percent {
+  font-size: 11px;
+}
+
+.live-trading-panel .results-header {
+  margin-bottom: 16px;
+}
+
+.live-trading-panel .run-backtest-btn {
+  margin-top: 16px;
+  padding: 12px;
+  font-size: 14px;
 }

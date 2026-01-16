@@ -4,17 +4,20 @@
  */
 
 import { useRef, useEffect } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { BacktestResult, EMPTY_BACKTEST_METRICS } from '../../../types/proMode';
 
 interface BacktestResultsProps {
   result: BacktestResult | null;
   isLoading: boolean;
+  progress?: number;
+  statusMessage?: string;
 }
 
-export default function BacktestResults({ result, isLoading }: BacktestResultsProps) {
+export default function BacktestResults({ result, isLoading, progress = 0, statusMessage = '' }: BacktestResultsProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const equitySeriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
 
   // Initialize chart
   useEffect(() => {
@@ -64,10 +67,20 @@ export default function BacktestResults({ result, isLoading }: BacktestResultsPr
   useEffect(() => {
     if (!chartRef.current || !result || result.equityCurve.length === 0) return;
 
-    // Clear existing series
+    // Remove existing series to prevent memory leak and overlapping curves
+    if (equitySeriesRef.current) {
+      try {
+        chartRef.current.removeSeries(equitySeriesRef.current);
+      } catch (e) {
+        // Series may already be removed
+      }
+      equitySeriesRef.current = null;
+    }
+
+    // Reset time scale
     chartRef.current.timeScale().resetTimeScale();
 
-    // Add equity line series
+    // Add new equity line series
     const equitySeries = chartRef.current.addSeries({
       type: 'Area',
       lineColor: '#22c55e',
@@ -75,6 +88,9 @@ export default function BacktestResults({ result, isLoading }: BacktestResultsPr
       bottomColor: 'rgba(34, 197, 94, 0.0)',
       lineWidth: 2,
     } as any);
+
+    // Store reference for cleanup
+    equitySeriesRef.current = equitySeries;
 
     const equityData = result.equityCurve.map((point) => ({
       time: Math.floor(point.timestamp / 1000) as any, // Convert to seconds
@@ -90,7 +106,15 @@ export default function BacktestResults({ result, isLoading }: BacktestResultsPr
       <div className="backtest-results">
         <div className="loading-state">
           <div className="loading-spinner"></div>
-          <span>Running backtest...</span>
+          <span>{statusMessage || 'Running backtest...'}</span>
+          {progress > 0 && (
+            <div className="progress-container">
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+              <span className="progress-text">{progress}%</span>
+            </div>
+          )}
         </div>
       </div>
     );

@@ -269,57 +269,79 @@ export function createStrategyVersion(
 // ============================================
 
 export const DEFAULT_STRATEGY_TEMPLATE = `"""
-Custom Trading Strategy Template
+Simple Moving Average Crossover Strategy
 
-This template provides the basic structure for a trading strategy.
-Implement the on_init and on_bar methods to define your strategy logic.
+This strategy demonstrates a basic SMA crossover approach:
+- Buy when fast SMA crosses above slow SMA
+- Sell when fast SMA crosses below slow SMA
 
 Available in context:
 - context.params: User-configured parameters
 - context.indicators: Indicator library (SMA, EMA, RSI, MACD, etc.)
-- context.logger: Logging utility
 
 Available in on_bar:
-- bar: { open, high, low, close, volume, timestamp }
+- bar: object with open, high, low, close, volume, timestamp
 - position: { side, quantity, avg_price, unrealized_pnl } or None
 - orders: List of open orders
 """
 
+import numpy as np
+
 class Strategy:
     def __init__(self, context):
-        """
-        Initialize your strategy here.
-        Set up indicators and any state you need.
-        """
+        """Initialize strategy with indicator parameters."""
         self.context = context
-
-        # Example: Initialize moving averages
-        # self.sma_fast = context.indicators.SMA(period=10)
-        # self.sma_slow = context.indicators.SMA(period=50)
+        self.closes = []
+        self.fast_period = context.get_param('fast_period', 10)
+        self.slow_period = context.get_param('slow_period', 30)
+        self.position_size = context.get_param('position_size', 1.0)
+        self.prev_fast_sma = None
+        self.prev_slow_sma = None
 
     def on_bar(self, bar, position, orders):
         """
-        Called on each new bar (candle).
-
-        Args:
-            bar: dict with open, high, low, close, volume, timestamp
-            position: Current position or None if flat
-            orders: List of open orders
-
-        Returns:
-            List of signals: [{ 'type': 'buy'|'sell', 'quantity': float,
-                               'order_type': 'market'|'limit', 'price': float (optional) }]
+        Called on each new bar.
+        Returns list of signals when conditions are met.
         """
         signals = []
 
-        # Your strategy logic here
-        # Example:
-        # if some_buy_condition:
-        #     signals.append({
-        #         'type': 'buy',
-        #         'quantity': 1.0,
-        #         'order_type': 'market'
-        #     })
+        # Collect closing prices
+        self.closes.append(bar.close)
+
+        # Need enough data for slow SMA
+        if len(self.closes) < self.slow_period:
+            return signals
+
+        # Calculate SMAs
+        closes_arr = np.array(self.closes)
+        fast_sma = np.mean(closes_arr[-self.fast_period:])
+        slow_sma = np.mean(closes_arr[-self.slow_period:])
+
+        # Check for crossover signals
+        if self.prev_fast_sma is not None and self.prev_slow_sma is not None:
+            # Golden cross: fast crosses above slow
+            if self.prev_fast_sma <= self.prev_slow_sma and fast_sma > slow_sma:
+                if position is None:  # Only buy if not in position
+                    signals.append({
+                        'type': 'buy',
+                        'quantity': self.position_size,
+                        'order_type': 'market',
+                        'reason': f'Golden cross: SMA{self.fast_period} ({fast_sma:.2f}) > SMA{self.slow_period} ({slow_sma:.2f})'
+                    })
+
+            # Death cross: fast crosses below slow
+            elif self.prev_fast_sma >= self.prev_slow_sma and fast_sma < slow_sma:
+                if position is not None and position.get('side') == 'long':
+                    signals.append({
+                        'type': 'sell',
+                        'quantity': position.get('quantity', self.position_size),
+                        'order_type': 'market',
+                        'reason': f'Death cross: SMA{self.fast_period} ({fast_sma:.2f}) < SMA{self.slow_period} ({slow_sma:.2f})'
+                    })
+
+        # Store for next bar comparison
+        self.prev_fast_sma = fast_sma
+        self.prev_slow_sma = slow_sma
 
         return signals
 `;

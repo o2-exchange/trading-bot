@@ -21,13 +21,23 @@ import {
 } from '../../types/proMode';
 import { strategyOperations, backtestOperations } from '../../services/proMode/proModeDbService';
 import { pyodideService } from '../../services/proMode/pyodideService';
+import { backtestEngine } from '../../services/proMode/backtestEngine';
+import { externalDataService } from '../../services/proMode/externalDataService';
+import ShareDialog from './sharing/ShareDialog';
+import ImportDialog from './sharing/ImportDialog';
+import { LiveTradingPanel } from './live';
 import './ProModePage.css';
 
-type ProModeTab = 'editor' | 'backtest' | 'results' | 'templates';
+type ProModeTab = 'editor' | 'backtest' | 'results' | 'templates' | 'live';
+
+const TAB_STORAGE_KEY = 'promode-active-tab';
 
 export default function ProModePage() {
-  // Tab state
-  const [activeTab, setActiveTab] = useState<ProModeTab>('editor');
+  // Tab state - restore from localStorage if available
+  const [activeTab, setActiveTab] = useState<ProModeTab>(() => {
+    const saved = localStorage.getItem(TAB_STORAGE_KEY);
+    return (saved as ProModeTab) || 'editor';
+  });
 
   // Strategy state
   const [strategies, setStrategies] = useState<CustomStrategy[]>([]);
@@ -48,12 +58,23 @@ export default function ProModePage() {
   const [backtestConfig, setBacktestConfig] = useState<BacktestConfigType | null>(null);
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
   const [isBacktesting, setIsBacktesting] = useState(false);
+  const [backtestProgress, setBacktestProgress] = useState(0);
+  const [backtestStatusMessage, setBacktestStatusMessage] = useState('');
+
+  // Dialog state
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
 
   // Load strategies on mount
   useEffect(() => {
     loadStrategies();
     initializePyodide();
   }, []);
+
+  // Persist tab state to localStorage
+  useEffect(() => {
+    localStorage.setItem(TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
 
   // Update code when strategy changes
   useEffect(() => {
@@ -154,6 +175,8 @@ export default function ProModePage() {
       );
       setSelectedStrategy(updatedStrategy);
       setIsDirty(false);
+      // Clear validation after successful save (code may need revalidation)
+      setValidationResult(null);
     } catch (error) {
       console.error('Failed to save strategy:', error);
     } finally {
@@ -199,14 +222,78 @@ export default function ProModePage() {
 
     try {
       setIsBacktesting(true);
+      setBacktestProgress(0);
+      setBacktestStatusMessage('Initializing backtest...');
       setActiveTab('results');
 
-      // For now, show placeholder results
-      // TODO: Implement actual backtest execution
-      console.log('Running backtest with config:', backtestConfig);
+      // First, ensure Pyodide is ready
+      if (pyodideStatus !== 'ready') {
+        setBacktestStatusMessage('Waiting for Python runtime...');
+        await pyodideService.initialize();
+      }
+
+      // Fetch historical data based on data source
+      setBacktestStatusMessage('Fetching historical data...');
+      setBacktestProgress(5);
+
+      const bars = await externalDataService.fetchBars(
+        backtestConfig.dataSource,
+        {
+          startDate: backtestConfig.startDate,
+          endDate: backtestConfig.endDate,
+          resolution: backtestConfig.barResolution,
+          useCache: true,
+        }
+      );
+
+      if (bars.length === 0) {
+        setBacktestStatusMessage('No data available for the selected period');
+        setIsBacktesting(false);
+        return;
+      }
+
+      setBacktestStatusMessage(`Running backtest on ${bars.length} bars...`);
+      setBacktestProgress(10);
+
+      // Run the backtest
+      const result = await backtestEngine.runBacktest(
+        backtestConfig,
+        selectedStrategy,
+        (progress) => {
+          setBacktestProgress(progress);
+          if (progress < 50) {
+            setBacktestStatusMessage(`Processing bars... ${progress}%`);
+          } else if (progress < 90) {
+            setBacktestStatusMessage(`Executing strategy... ${progress}%`);
+          } else {
+            setBacktestStatusMessage(`Calculating metrics... ${progress}%`);
+          }
+        }
+      );
+
+      setBacktestResult(result);
+      setBacktestProgress(100);
+
+      if (result.status === 'completed') {
+        setBacktestStatusMessage('Backtest completed successfully');
+
+        // Update strategy status
+        await strategyOperations.update(selectedStrategy.id, {
+          status: 'backtested',
+        });
+        setSelectedStrategy(prev => prev ? { ...prev, status: 'backtested' } : null);
+        setStrategies(prev =>
+          prev.map(s => (s.id === selectedStrategy.id ? { ...s, status: 'backtested' } : s))
+        );
+      } else if (result.status === 'failed') {
+        setBacktestStatusMessage(`Backtest failed: ${result.errorMessage || 'Unknown error'}`);
+      } else if (result.status === 'cancelled') {
+        setBacktestStatusMessage('Backtest was cancelled');
+      }
 
     } catch (error) {
       console.error('Backtest failed:', error);
+      setBacktestStatusMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsBacktesting(false);
     }
@@ -241,6 +328,20 @@ export default function ProModePage() {
     }
   };
 
+  const handleImportSuccess = async (strategyId: string) => {
+    // Reload strategies to include the imported one
+    await loadStrategies();
+    // Select the imported strategy
+    const imported = await strategyOperations.getById(strategyId);
+    if (imported) {
+      setSelectedStrategy(imported);
+      setCode(imported.pythonCode);
+      setIsDirty(false);
+    }
+    setShowImportDialog(false);
+    setActiveTab('editor');
+  };
+
   return (
     <div className="pro-mode-page">
       {/* Header with tabs */}
@@ -270,14 +371,37 @@ export default function ProModePage() {
           >
             Templates
           </button>
+          <button
+            className={`pro-mode-tab-btn ${activeTab === 'live' ? 'active' : ''}`}
+            onClick={() => setActiveTab('live')}
+          >
+            Live Trading
+          </button>
         </div>
 
         <div className="pro-mode-status">
+          {/* Import/Export buttons */}
+          <button
+            className="toolbar-btn"
+            onClick={() => setShowImportDialog(true)}
+            title="Import strategy"
+          >
+            Import
+          </button>
+          <button
+            className="toolbar-btn"
+            onClick={() => setShowShareDialog(true)}
+            disabled={!selectedStrategy}
+            title="Export/share strategy"
+          >
+            Export
+          </button>
+
           <span className={`pyodide-status ${pyodideStatus}`}>
             {pyodideStatus === 'initializing' && 'Loading Python...'}
             {pyodideStatus === 'ready' && 'Python Ready'}
             {pyodideStatus === 'error' && 'Python Error'}
-            {pyodideStatus === 'idle' && 'Waiting...'}
+            {pyodideStatus === 'idle' && 'Python Idle'}
           </span>
         </div>
       </div>
@@ -341,6 +465,8 @@ export default function ProModePage() {
           <BacktestResults
             result={backtestResult}
             isLoading={isBacktesting}
+            progress={backtestProgress}
+            statusMessage={backtestStatusMessage}
           />
         )}
 
@@ -350,7 +476,30 @@ export default function ProModePage() {
             onSelectTemplate={handleSelectTemplate}
           />
         )}
+
+        {/* Live Trading Tab */}
+        {activeTab === 'live' && (
+          <LiveTradingPanel
+            strategy={selectedStrategy}
+            marketId={backtestConfig?.dataSource?.marketId || 'default'}
+          />
+        )}
       </div>
+
+      {/* Dialogs */}
+      {showShareDialog && selectedStrategy && (
+        <ShareDialog
+          strategy={selectedStrategy}
+          onClose={() => setShowShareDialog(false)}
+        />
+      )}
+
+      {showImportDialog && (
+        <ImportDialog
+          onClose={() => setShowImportDialog(false)}
+          onImportSuccess={handleImportSuccess}
+        />
+      )}
     </div>
   );
 }

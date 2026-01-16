@@ -12,6 +12,9 @@ import {
   CustomIndicator,
   ShareLink,
   BarData,
+  PaperPosition,
+  PaperOrder,
+  PaperTrade,
 } from '../../types/proMode';
 
 // ============================================
@@ -45,6 +48,29 @@ export interface HistoricalDataCache {
 }
 
 // ============================================
+// PAPER TRADING STATE (Serializable)
+// ============================================
+
+export interface SerializedPaperTradingState {
+  id: string;                         // Unique identifier for the state (typically 'current')
+  strategyId?: string;                // Associated strategy ID
+  initialCapital: number;
+  currentCapital: number;
+  cash: number;
+  positions: PaperPosition[];         // Array instead of Map for serialization
+  openOrders: PaperOrder[];
+  orderHistory: PaperOrder[];
+  tradeHistory: PaperTrade[];
+  totalPnl: number;
+  totalPnlPercent: number;
+  totalFees: number;
+  feeRate: number;
+  slippagePercent: number;
+  startedAt: number;
+  lastUpdatedAt: number;
+}
+
+// ============================================
 // PRO MODE DATABASE
 // ============================================
 
@@ -63,6 +89,9 @@ export class ProModeDB extends Dexie {
   // External data tables
   externalDataCache!: Table<CachedExternalData, string>;
   historicalDataCache!: Table<HistoricalDataCache, string>;
+
+  // Paper trading tables
+  paperTradingState!: Table<SerializedPaperTradingState, string>;
 
   // Sharing tables
   shareLinks!: Table<ShareLink, string>;
@@ -85,6 +114,30 @@ export class ProModeDB extends Dexie {
       // External data tables
       externalDataCache: 'id, feedType, symbol, resolution, expiresAt',
       historicalDataCache: 'id, marketId, symbol, resolution, source, uploadedAt',
+
+      // Sharing tables
+      shareLinks: 'id, strategyId, strategyVersionId, expiresAt, createdAt',
+    });
+
+    // Version 2: Add paper trading state table
+    this.version(2).stores({
+      // Strategy tables - indexes for common queries
+      customStrategies: 'id, name, status, templateCategory, isTemplate, createdAt, updatedAt',
+      strategyVersions: 'id, strategyId, version, createdAt',
+
+      // Backtest tables
+      backtestConfigs: 'id, strategyId, strategyVersionId, createdAt',
+      backtestResults: 'id, configId, strategyId, strategyVersionId, status, createdAt',
+
+      // Indicator tables
+      customIndicators: 'id, name, category, createdAt',
+
+      // External data tables
+      externalDataCache: 'id, feedType, symbol, resolution, expiresAt',
+      historicalDataCache: 'id, marketId, symbol, resolution, source, uploadedAt',
+
+      // Paper trading tables
+      paperTradingState: 'id, strategyId, lastUpdatedAt',
 
       // Sharing tables
       shareLinks: 'id, strategyId, strategyVersionId, expiresAt, createdAt',
@@ -388,6 +441,35 @@ export const shareLinkOperations = {
 };
 
 // ============================================
+// PAPER TRADING STATE OPERATIONS
+// ============================================
+
+export const paperTradingStateOperations = {
+  async get(id: string = 'current'): Promise<SerializedPaperTradingState | undefined> {
+    return proModeDb.paperTradingState.get(id);
+  },
+
+  async save(state: SerializedPaperTradingState): Promise<void> {
+    await proModeDb.paperTradingState.put(state);
+  },
+
+  async delete(id: string = 'current'): Promise<void> {
+    await proModeDb.paperTradingState.delete(id);
+  },
+
+  async getByStrategyId(strategyId: string): Promise<SerializedPaperTradingState | undefined> {
+    return proModeDb.paperTradingState
+      .where('strategyId')
+      .equals(strategyId)
+      .first();
+  },
+
+  async clear(): Promise<void> {
+    await proModeDb.paperTradingState.clear();
+  },
+};
+
+// ============================================
 // DATABASE UTILITIES
 // ============================================
 
@@ -403,6 +485,7 @@ export const dbUtils = {
         proModeDb.customIndicators,
         proModeDb.externalDataCache,
         proModeDb.historicalDataCache,
+        proModeDb.paperTradingState,
         proModeDb.shareLinks,
       ],
       async () => {
@@ -413,6 +496,7 @@ export const dbUtils = {
         await proModeDb.customIndicators.clear();
         await proModeDb.externalDataCache.clear();
         await proModeDb.historicalDataCache.clear();
+        await proModeDb.paperTradingState.clear();
         await proModeDb.shareLinks.clear();
       }
     );

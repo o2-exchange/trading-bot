@@ -55,10 +55,9 @@ class PyodideService {
 
     this.initPromise = new Promise<void>((resolve, reject) => {
       try {
-        // Create worker
+        // Create worker (classic worker, not ES module, to support importScripts)
         this.worker = new Worker(
-          new URL('../../workers/pyodide.worker.ts', import.meta.url),
-          { type: 'module' }
+          new URL('../../workers/pyodide-classic.worker.js', import.meta.url)
         );
 
         // Set up message handler

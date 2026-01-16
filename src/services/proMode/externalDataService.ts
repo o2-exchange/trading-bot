@@ -11,7 +11,7 @@ import { proModeDb, HistoricalDataCache } from './proModeDbService';
 // ============================================
 
 export interface DataSourceConfig {
-  type: 'o2-api' | 'binance' | 'pyth' | 'coingecko' | 'csv-upload';
+  type: 'o2-api' | 'binance' | 'bitget' | 'pyth' | 'coingecko' | 'csv-upload';
   marketId?: string;
   symbol?: string;
   uploadedFileId?: string;
@@ -28,9 +28,77 @@ export interface FetchOptions {
 // EXTERNAL DATA SERVICE
 // ============================================
 
+// O2 API environments
+type O2Environment = 'mainnet' | 'testnet' | 'devnet';
+
+const O2_API_URLS: Record<O2Environment, string> = {
+  mainnet: 'https://api.o2.app',
+  testnet: 'https://api.testnet.o2.app',
+  devnet: 'https://api.devnet.o2.app',
+};
+
+// O2 Market Info type for caching
+interface O2MarketInfo {
+  market_id: string;
+  base: { symbol: string; decimals: number };
+  quote: { symbol: string; decimals: number };
+}
+
 class ExternalDataService {
   private readonly BINANCE_API = 'https://api.binance.com';
+  private readonly BITGET_API = 'https://api.bitget.com';
   private readonly COINGECKO_API = 'https://api.coingecko.com/api/v3';
+  private readonly FETCH_TIMEOUT_MS = 30000; // 30 second timeout
+  private readonly MARKET_INFO_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+  private o2Environment: O2Environment = 'testnet'; // Default to testnet
+
+  // Market info cache to avoid fetching on every bar request
+  private marketInfoCache = new Map<string, { info: O2MarketInfo; timestamp: number }>();
+
+  /**
+   * Set O2 API environment (mainnet, testnet, devnet)
+   */
+  setO2Environment(env: O2Environment): void {
+    this.o2Environment = env;
+    // Clear cache when environment changes
+    this.marketInfoCache.clear();
+  }
+
+  /**
+   * Get current O2 environment
+   */
+  getO2Environment(): O2Environment {
+    return this.o2Environment;
+  }
+
+  /**
+   * Get available O2 environments
+   */
+  getO2Environments(): O2Environment[] {
+    return ['mainnet', 'testnet', 'devnet'];
+  }
+
+  /**
+   * Get current O2 API URL based on environment
+   */
+  private get O2_API(): string {
+    return O2_API_URLS[this.o2Environment];
+  }
+
+  /**
+   * Fetch with timeout support
+   */
+  private async fetchWithTimeout(url: string, timeoutMs: number = this.FETCH_TIMEOUT_MS): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      return response;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 
   /**
    * Fetch historical bar data from configured source
@@ -57,6 +125,9 @@ class ExternalDataService {
       case 'binance':
         bars = await this.fetchBinanceKlines(source.symbol!, options);
         break;
+      case 'bitget':
+        bars = await this.fetchBitgetBars(source.symbol!, options);
+        break;
       case 'coingecko':
         bars = await this.fetchCoinGeckoHistory(source.symbol!, options);
         break;
@@ -77,34 +148,238 @@ class ExternalDataService {
 
   /**
    * Fetch bars from O2 API
+   * O2 Exchange uses ms timestamps and has format: 1s, 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M
+   * NOTE: O2 returns prices/volumes scaled by decimals (typically 10^9)
+   * NOTE: O2 API limits to 5000 bars per request, so we fetch in chunks
    */
   async fetchO2Bars(marketId: string, options: FetchOptions): Promise<BarData[]> {
-    try {
-      const resolution = this.convertResolutionToO2(options.resolution);
-      const url = new URL('/v1/bars', 'https://api.o2.xyz');
+    const resolution = this.convertResolutionToO2String(options.resolution);
+
+    // First get market info to determine decimals (throws on failure)
+    const marketInfo = await this.getO2MarketInfo(marketId);
+    const priceDecimals = marketInfo.quote.decimals;
+    const volumeDecimals = marketInfo.base.decimals;
+    const priceScale = Math.pow(10, priceDecimals);
+    const volumeScale = Math.pow(10, volumeDecimals);
+
+    console.log(`[ExternalDataService] O2 market decimals - price: ${priceDecimals}, volume: ${volumeDecimals}`);
+
+    // O2 API limits to 5000 bars per request, use 4000 to be safe
+    const MAX_BARS_PER_REQUEST = 4000;
+    const resolutionMs = this.getResolutionMs(options.resolution);
+    const allBars: BarData[] = [];
+
+    let startTime = options.startDate;
+    const endTime = options.endDate;
+
+    console.log(`[ExternalDataService] Fetching O2 bars from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
+
+    while (startTime < endTime) {
+      // Calculate chunk end time (max 4000 bars worth)
+      const chunkEndTime = Math.min(startTime + (MAX_BARS_PER_REQUEST * resolutionMs), endTime);
+
+      const url = new URL('/v1/bars', this.O2_API);
       url.searchParams.set('market_id', marketId);
       url.searchParams.set('resolution', resolution);
-      url.searchParams.set('start_time', Math.floor(options.startDate / 1000).toString());
-      url.searchParams.set('end_time', Math.floor(options.endDate / 1000).toString());
+      url.searchParams.set('from', startTime.toString()); // O2 uses ms
+      url.searchParams.set('to', chunkEndTime.toString());
 
-      const response = await fetch(url.toString());
+      console.log(`[ExternalDataService] Fetching O2 bars chunk: ${url.toString()}`);
+
+      const response = await this.fetchWithTimeout(url.toString());
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(`[ExternalDataService] O2 API error: ${response.status} - ${errorText}`);
+        throw new Error(`O2 API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.bars || !Array.isArray(data.bars)) {
+        console.warn('[ExternalDataService] O2 API returned no bars data for chunk');
+        // Move to next chunk
+        startTime = chunkEndTime + 1;
+        continue;
+      }
+
+      console.log(`[ExternalDataService] O2 API returned ${data.bars.length} bars in chunk`);
+
+      // Process bars in this chunk
+      let invalidBarCount = 0;
+
+      for (let i = 0; i < data.bars.length; i++) {
+        const bar = data.bars[i];
+
+        const open = parseFloat(bar.open) / priceScale;
+        const high = parseFloat(bar.high) / priceScale;
+        const low = parseFloat(bar.low) / priceScale;
+        const close = parseFloat(bar.close) / priceScale;
+        const volume = (parseFloat(bar.buy_volume || '0') + parseFloat(bar.sell_volume || '0')) / volumeScale;
+
+        // Validate all values are finite numbers
+        if (!Number.isFinite(open) || !Number.isFinite(high) ||
+            !Number.isFinite(low) || !Number.isFinite(close) || !Number.isFinite(volume)) {
+          invalidBarCount++;
+          continue;
+        }
+
+        allBars.push({
+          timestamp: bar.timestamp, // O2 returns timestamp in ms
+          open,
+          high,
+          low,
+          close,
+          volume,
+        });
+      }
+
+      if (invalidBarCount > 0) {
+        console.warn(`[ExternalDataService] Skipped ${invalidBarCount} invalid bars in chunk`);
+      }
+
+      // Move to next chunk - use last bar timestamp + 1ms to avoid duplicates
+      if (data.bars.length > 0) {
+        const lastBarTimestamp = data.bars[data.bars.length - 1].timestamp;
+        startTime = lastBarTimestamp + 1;
+      } else {
+        startTime = chunkEndTime + 1;
+      }
+
+      // Rate limiting - wait 100ms between requests
+      if (startTime < endTime) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    // Sort by timestamp to ensure order
+    allBars.sort((a, b) => a.timestamp - b.timestamp);
+
+    console.log(`[ExternalDataService] Total O2 bars fetched: ${allBars.length}`);
+
+    // Log first and last bar for debugging
+    if (allBars.length > 0) {
+      console.log(`[ExternalDataService] First bar (scaled): ${JSON.stringify(allBars[0])}`);
+      console.log(`[ExternalDataService] Last bar (scaled): ${JSON.stringify(allBars[allBars.length - 1])}`);
+    }
+
+    return allBars;
+  }
+
+  /**
+   * Get resolution in milliseconds
+   */
+  private getResolutionMs(resolution: BarResolution): number {
+    const resolutionMap: Record<BarResolution, number> = {
+      '1m': 60000,
+      '5m': 300000,
+      '15m': 900000,
+      '30m': 1800000,
+      '1h': 3600000,
+      '4h': 14400000,
+      '1D': 86400000,
+    };
+    return resolutionMap[resolution] || 3600000; // Default to 1h
+  }
+
+  /**
+   * Get O2 market info including decimals (with caching)
+   * Throws on failure - do not silently return null
+   */
+  private async getO2MarketInfo(marketId: string): Promise<O2MarketInfo> {
+    // Check cache first
+    const cached = this.marketInfoCache.get(marketId);
+    if (cached && Date.now() - cached.timestamp < this.MARKET_INFO_CACHE_TTL) {
+      console.log(`[ExternalDataService] Using cached market info for ${marketId}`);
+      return cached.info;
+    }
+
+    console.log(`[ExternalDataService] Fetching market info for ${marketId}`);
+
+    try {
+      const response = await this.fetchWithTimeout(`${this.O2_API}/v1/markets`);
+      if (!response.ok) {
+        throw new Error(`O2 markets API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.markets || !Array.isArray(data.markets)) {
+        throw new Error('O2 markets API returned invalid data structure');
+      }
+
+      const marketInfo = data.markets.find((m: any) => m.market_id === marketId);
+      if (!marketInfo) {
+        throw new Error(`Market ${marketId} not found in O2 markets`);
+      }
+
+      // Validate required decimals fields
+      if (typeof marketInfo.quote?.decimals !== 'number') {
+        throw new Error(`Market ${marketId} is missing quote.decimals`);
+      }
+      if (typeof marketInfo.base?.decimals !== 'number') {
+        throw new Error(`Market ${marketId} is missing base.decimals`);
+      }
+
+      const info: O2MarketInfo = {
+        market_id: marketInfo.market_id,
+        base: { symbol: marketInfo.base.symbol, decimals: marketInfo.base.decimals },
+        quote: { symbol: marketInfo.quote.symbol, decimals: marketInfo.quote.decimals },
+      };
+
+      // Cache the result
+      this.marketInfoCache.set(marketId, { info, timestamp: Date.now() });
+
+      console.log(`[ExternalDataService] Cached market info for ${marketId}: price decimals=${info.quote.decimals}, volume decimals=${info.base.decimals}`);
+
+      return info;
+    } catch (error) {
+      console.error('[ExternalDataService] Failed to get market info:', error);
+      throw error; // Re-throw - do not silently fail
+    }
+  }
+
+  /**
+   * Convert resolution to O2 API format string
+   */
+  private convertResolutionToO2String(resolution: BarResolution): string {
+    const map: Record<BarResolution, string> = {
+      '1m': '1m',
+      '5m': '5m',
+      '15m': '15m',
+      '30m': '30m',
+      '1h': '1h',
+      '4h': '4h',
+      '1D': '1d',
+    };
+    return map[resolution] || '1h';
+  }
+
+  /**
+   * Get available O2 markets
+   */
+  async getO2Markets(): Promise<Array<{ id: string; baseSymbol: string; quoteSymbol: string }>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.O2_API}/v1/markets`);
       if (!response.ok) {
         throw new Error(`O2 API error: ${response.status}`);
       }
 
       const data = await response.json();
 
-      return data.bars.map((bar: any) => ({
-        timestamp: bar.timestamp * 1000,
-        open: parseFloat(bar.open),
-        high: parseFloat(bar.high),
-        low: parseFloat(bar.low),
-        close: parseFloat(bar.close),
-        volume: parseFloat(bar.volume || '0'),
+      if (!data.markets || !Array.isArray(data.markets)) {
+        console.warn('[ExternalDataService] O2 markets API returned invalid structure');
+        return [];
+      }
+
+      console.log(`[ExternalDataService] Fetched ${data.markets.length} O2 markets`);
+
+      return data.markets.map((market: any) => ({
+        id: market.market_id || market.id,
+        baseSymbol: market.base?.symbol || 'UNKNOWN',
+        quoteSymbol: market.quote?.symbol || 'USDC',
       }));
     } catch (error) {
-      console.error('Failed to fetch O2 bars:', error);
-      return [];
+      console.error('[ExternalDataService] Failed to fetch O2 markets:', error);
+      throw error; // Re-throw so the caller knows the request failed
     }
   }
 
@@ -115,6 +390,8 @@ class ExternalDataService {
     try {
       const interval = this.convertResolutionToBinance(options.resolution);
       const bars: BarData[] = [];
+
+      console.log(`[ExternalDataService] Fetching Binance klines for ${symbol}, interval: ${interval}`);
 
       // Binance limits to 1000 candles per request
       const limit = 1000;
@@ -128,12 +405,16 @@ class ExternalDataService {
         url.searchParams.set('endTime', options.endDate.toString());
         url.searchParams.set('limit', limit.toString());
 
+        console.log(`[ExternalDataService] Binance request: ${url.toString()}`);
+
         const response = await fetch(url.toString());
         if (!response.ok) {
+          console.error(`[ExternalDataService] Binance API error: ${response.status}`);
           throw new Error(`Binance API error: ${response.status}`);
         }
 
         const data = await response.json();
+        console.log(`[ExternalDataService] Binance returned ${data.length} klines`);
 
         if (data.length === 0) break;
 
@@ -155,11 +436,166 @@ class ExternalDataService {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
+      console.log(`[ExternalDataService] Total Binance bars fetched: ${bars.length}`);
+
+      // Log first and last bar for debugging
+      if (bars.length > 0) {
+        console.log(`[ExternalDataService] First bar: ${JSON.stringify(bars[0])}`);
+        console.log(`[ExternalDataService] Last bar: ${JSON.stringify(bars[bars.length - 1])}`);
+      }
+
       return bars;
     } catch (error) {
-      console.error('Failed to fetch Binance klines:', error);
+      console.error('[ExternalDataService] Failed to fetch Binance klines:', error);
       return [];
     }
+  }
+
+  /**
+   * Fetch klines from Bitget API
+   * Bitget API docs: https://www.bitget.com/api-doc/spot/market/Get-Candle-Data
+   * Returns: [[timestamp, open, high, low, close, baseVolume, quoteVolume], ...]
+   */
+  async fetchBitgetBars(symbol: string, options: FetchOptions): Promise<BarData[]> {
+    try {
+      const granularity = this.convertResolutionToBitget(options.resolution);
+      const bars: BarData[] = [];
+
+      console.log(`[ExternalDataService] Fetching Bitget klines for ${symbol}, granularity: ${granularity}`);
+
+      // Bitget limits to 1000 candles per request
+      const limit = 1000;
+      let startTime = options.startDate;
+
+      while (startTime < options.endDate) {
+        const url = new URL('/api/v2/spot/market/candles', this.BITGET_API);
+        url.searchParams.set('symbol', symbol.toUpperCase());
+        url.searchParams.set('granularity', granularity);
+        url.searchParams.set('startTime', startTime.toString());
+        url.searchParams.set('endTime', options.endDate.toString());
+        url.searchParams.set('limit', limit.toString());
+
+        console.log(`[ExternalDataService] Bitget request: ${url.toString()}`);
+
+        const response = await this.fetchWithTimeout(url.toString());
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.error(`[ExternalDataService] Bitget API error: ${response.status} - ${errorText}`);
+          throw new Error(`Bitget API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Bitget returns { code: "00000", data: [...], msg: "success" }
+        if (data.code !== '00000' || !data.data || !Array.isArray(data.data)) {
+          console.error(`[ExternalDataService] Bitget API returned error:`, data);
+          throw new Error(`Bitget API error: ${data.msg || 'Invalid response'}`);
+        }
+
+        console.log(`[ExternalDataService] Bitget returned ${data.data.length} klines`);
+
+        if (data.data.length === 0) break;
+
+        // Bitget returns arrays: [timestamp, open, high, low, close, baseVol, quoteVol]
+        for (const kline of data.data) {
+          const timestamp = parseInt(kline[0], 10);
+          bars.push({
+            timestamp,
+            open: parseFloat(kline[1]),
+            high: parseFloat(kline[2]),
+            low: parseFloat(kline[3]),
+            close: parseFloat(kline[4]),
+            volume: parseFloat(kline[5]), // baseVolume
+          });
+        }
+
+        // Move to next batch - get the newest timestamp and continue from there
+        const timestamps = data.data.map((k: string[]) => parseInt(k[0], 10));
+        const newestTimestamp = Math.max(...timestamps);
+
+        // Move forward from the newest timestamp
+        startTime = newestTimestamp + this.getResolutionMs(options.resolution);
+
+        // Rate limiting - wait 100ms between requests
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // Sort by timestamp (ascending)
+      bars.sort((a, b) => a.timestamp - b.timestamp);
+
+      // Remove duplicates based on timestamp
+      const uniqueBars: BarData[] = [];
+      const seenTimestamps = new Set<number>();
+      for (const bar of bars) {
+        if (!seenTimestamps.has(bar.timestamp)) {
+          seenTimestamps.add(bar.timestamp);
+          uniqueBars.push(bar);
+        }
+      }
+
+      console.log(`[ExternalDataService] Total Bitget bars fetched: ${uniqueBars.length}`);
+
+      // Log first and last bar for debugging
+      if (uniqueBars.length > 0) {
+        console.log(`[ExternalDataService] First bar: ${JSON.stringify(uniqueBars[0])}`);
+        console.log(`[ExternalDataService] Last bar: ${JSON.stringify(uniqueBars[uniqueBars.length - 1])}`);
+      }
+
+      return uniqueBars;
+    } catch (error) {
+      console.error('[ExternalDataService] Failed to fetch Bitget klines:', error);
+      throw error; // Re-throw so caller knows fetch failed
+    }
+  }
+
+  /**
+   * Get available Bitget spot symbols
+   */
+  async getBitgetSymbols(): Promise<Array<{ symbol: string; baseCoin: string; quoteCoin: string }>> {
+    try {
+      const url = new URL('/api/v2/spot/public/symbols', this.BITGET_API);
+      const response = await this.fetchWithTimeout(url.toString());
+
+      if (!response.ok) {
+        throw new Error(`Bitget API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== '00000' || !data.data || !Array.isArray(data.data)) {
+        console.error('[ExternalDataService] Bitget symbols API returned error:', data);
+        return [];
+      }
+
+      // Filter for USDT pairs that are trading
+      return data.data
+        .filter((s: any) => s.quoteCoin === 'USDT' && s.status === 'online')
+        .map((s: any) => ({
+          symbol: s.symbol,
+          baseCoin: s.baseCoin,
+          quoteCoin: s.quoteCoin,
+        }));
+    } catch (error) {
+      console.error('[ExternalDataService] Failed to fetch Bitget symbols:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Convert resolution to Bitget granularity format
+   * Bitget uses: 1min, 5min, 15min, 30min, 1h, 4h, 1day, 1week
+   */
+  private convertResolutionToBitget(resolution: BarResolution): string {
+    const map: Record<BarResolution, string> = {
+      '1m': '1min',
+      '5m': '5min',
+      '15m': '15min',
+      '30m': '30min',
+      '1h': '1h',
+      '4h': '4h',
+      '1D': '1day',
+    };
+    return map[resolution] || '1h';
   }
 
   /**
@@ -466,23 +902,12 @@ class ExternalDataService {
     throw new Error(`Invalid timestamp: ${value}`);
   }
 
-  private convertResolutionToO2(resolution: BarResolution): string {
-    const map: Record<BarResolution, string> = {
-      '1m': '1',
-      '5m': '5',
-      '15m': '15',
-      '1h': '60',
-      '4h': '240',
-      '1D': '1440',
-    };
-    return map[resolution] || '60';
-  }
-
   private convertResolutionToBinance(resolution: BarResolution): string {
     const map: Record<BarResolution, string> = {
       '1m': '1m',
       '5m': '5m',
       '15m': '15m',
+      '30m': '30m',
       '1h': '1h',
       '4h': '4h',
       '1D': '1d',
@@ -496,3 +921,6 @@ export const externalDataService = new ExternalDataService();
 
 // Export class for testing
 export { ExternalDataService };
+
+// Export types
+export type { O2Environment };

@@ -16,12 +16,13 @@ export interface BarData {
   volume: number;
 }
 
-export type BarResolution = '1m' | '5m' | '15m' | '1h' | '4h' | '1D';
+export type BarResolution = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1D';
 
 export const BAR_RESOLUTION_LABELS: Record<BarResolution, string> = {
   '1m': '1 Minute',
   '5m': '5 Minutes',
   '15m': '15 Minutes',
+  '30m': '30 Minutes',
   '1h': '1 Hour',
   '4h': '4 Hours',
   '1D': '1 Day',
@@ -31,6 +32,7 @@ export const BAR_RESOLUTION_MS: Record<BarResolution, number> = {
   '1m': 60000,
   '5m': 300000,
   '15m': 900000,
+  '30m': 1800000,
   '1h': 3600000,
   '4h': 14400000,
   '1D': 86400000,
@@ -40,11 +42,12 @@ export const BAR_RESOLUTION_MS: Record<BarResolution, number> = {
 // DATA SOURCE CONFIGURATION
 // ============================================
 
-export type DataSourceType = 'o2-api' | 'binance' | 'pyth' | 'coingecko' | 'csv-upload';
+export type DataSourceType = 'o2-api' | 'binance' | 'bitget' | 'pyth' | 'coingecko' | 'csv-upload';
 
 export const DATA_SOURCE_LABELS: Record<DataSourceType, string> = {
   'o2-api': 'O2 API',
   'binance': 'Binance',
+  'bitget': 'Bitget',
   'pyth': 'Pyth Network',
   'coingecko': 'CoinGecko',
   'csv-upload': 'CSV Upload',
