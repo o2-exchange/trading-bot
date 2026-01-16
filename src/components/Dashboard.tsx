@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { walletService } from '../services/walletService'
 import { sessionService } from '../services/sessionService'
 import { tradingEngine } from '../services/tradingEngine'
@@ -22,6 +23,7 @@ import WelcomeModal from './WelcomeModal'
 import DepositDialog from './DepositDialog'
 import ConnectWalletDialog from './ConnectWalletDialog'
 import TutorialsPanel from './TutorialsPanel'
+import LanguageSelector from './LanguageSelector'
 import { balanceService } from '../services/balanceService'
 import { TradingAccountBalances } from '../types/tradingAccount'
 import { filterMarkets } from '../utils/marketFilters'
@@ -34,6 +36,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ isWalletConnected, onDisconnect }: DashboardProps) {
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<'dashboard' | 'trades' | 'tutorials'>('dashboard')
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [tradingAccount, setTradingAccount] = useState<any>(null)
@@ -254,7 +257,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
 
   const handleStartTrading = async (resumeSession: boolean = false) => {
     if (!walletAddress || !tradingAccount) {
-      addToast('Wallet or trading account not available', 'error')
+      addToast(t('errors.wallet_not_available'), 'error')
       return
     }
 
@@ -263,7 +266,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     const normalizedAddress = walletAddress.toLowerCase()
     const session = await sessionService.getActiveSession(normalizedAddress)
     if (!session) {
-      addToast('Session not ready. Please complete authentication.', 'error')
+      addToast(t('trading.session_not_ready'), 'error')
       return
     }
 
@@ -272,7 +275,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     const activeConfigs = allConfigs.filter((config) => config.isActive === true)
 
     if (activeConfigs.length === 0) {
-      addToast('Please create and activate a strategy in the Strategy Configuration section first.', 'error')
+      addToast(t('trading.create_strategy_first'), 'error')
       return
     }
 
@@ -280,9 +283,9 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
       await tradingEngine.start({ resumeSession })
       setIsTrading(true)
       setHasResumableSession(false) // Clear resumable state since we're now trading
-      addToast(resumeSession ? 'Trading session resumed' : 'New trading session started', 'success')
+      addToast(resumeSession ? t('trading.session_resumed') : t('trading.session_started'), 'success')
     } catch (error: any) {
-      addToast(`Failed to start trading: ${error.message}`, 'error')
+      addToast(t('trading.start_failed', { message: error.message }), 'error')
     }
   }
 
@@ -290,7 +293,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     tradingEngine.stop()
     setIsTrading(false)
     setHasResumableSession(true) // Session is now paused and can be resumed
-    addToast('Trading stopped', 'info')
+    addToast(t('trading.trading_stopped'), 'info')
   }
 
   const handleNewSessionClick = () => {
@@ -306,16 +309,16 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
       try {
         const result = await orderService.cancelAllOpenOrders(walletAddress)
         if (result.cancelled > 0) {
-          addToast(`Cancelled ${result.cancelled} open order(s)`, 'info')
+          addToast(t('strategy.cancel_orders_dialog.cancelled_orders', { count: result.cancelled }), 'info')
         }
         if (result.failed > 0) {
-          addToast(`Failed to cancel ${result.failed} order(s) - proceeding anyway`, 'warning')
+          addToast(t('strategy.cancel_orders_dialog.failed_to_cancel', { count: result.failed }), 'warning')
         }
         // Trigger immediate refresh of OpenOrdersPanel
         window.dispatchEvent(new Event('refresh-orders'))
       } catch (error) {
         console.error('Failed to cancel open orders:', error)
-        addToast('Failed to cancel some open orders - proceeding anyway', 'warning')
+        addToast(t('strategy.cancel_orders_dialog.failed_to_cancel', { count: 0 }), 'warning')
         // Still trigger refresh to show current state
         window.dispatchEvent(new Event('refresh-orders'))
       } finally {
@@ -333,7 +336,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     setShowNewSessionConfirm(false)
     setHasResumableSession(false)
 
-    addToast('Session cleared. Click Start Trading to begin.', 'info')
+    addToast(t('new_session.session_cleared'), 'info')
   }
 
   const handleCancelNewSession = () => {
@@ -377,10 +380,10 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     try {
       await navigator.clipboard.writeText(text)
       setCopiedAccountField(field)
-      addToast('Copied to clipboard', 'success')
+      addToast(t('common.copied_to_clipboard'), 'success')
       setTimeout(() => setCopiedAccountField(null), 2000)
     } catch (error) {
-      addToast('Failed to copy', 'error')
+      addToast(t('common.failed_to_copy'), 'error')
     }
   }
 
@@ -392,31 +395,31 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
   const getAuthStateMessage = (state: string): string => {
     switch (state) {
       case 'idle':
-        return 'Initializing...'
+        return t('auth.initializing')
       case 'checkingSituation':
-        return 'Checking eligibility...'
+        return t('auth.checking_eligibility')
       case 'checkingTerms':
-        return 'Checking terms...'
+        return t('auth.checking_terms')
       case 'awaitingTerms':
-        return 'Accept terms to continue'
+        return t('auth.accept_terms_to_continue')
       case 'verifyingAccessQueue':
-        return 'Verifying access...'
+        return t('auth.verifying_access')
       case 'displayingAccessQueue':
-        return 'In access queue'
+        return t('auth.in_access_queue')
       case 'awaitingInvitation':
-        return 'Enter invitation code'
+        return t('auth.enter_invitation_code')
       case 'awaitingSignature':
-        return 'Sign message to continue'
+        return t('auth.sign_message_to_continue')
       case 'signatureDeclined':
-        return 'Signature required'
+        return t('auth.signature_required')
       case 'creatingSession':
-        return 'Awaiting signature...'
+        return t('auth.awaiting_signature')
       case 'awaitingWelcome':
-        return 'Almost ready...'
+        return t('auth.almost_ready')
       case 'error':
-        return 'Error - retry'
+        return t('auth.error_retry')
       default:
-        return 'Setting up...'
+        return t('auth.setting_up')
     }
   }
 
@@ -455,33 +458,34 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
 
       <div className="dashboard-header">
           <div className="header-left">
-            <h1>o2 Trading Bot <span className="alpha-badge">Alpha</span></h1>
+            <h1>{t('header.title')} <span className="alpha-badge">{t('header.alpha_badge')}</span></h1>
             <div className="header-tabs">
               <button
                 className={activeTab === 'dashboard' ? 'active' : ''}
                 onClick={() => handleTabSwitch('dashboard')}
               >
-                Dashboard
+                {t('header.dashboard_tab')}
               </button>
               <button
                 className={activeTab === 'trades' ? 'active' : ''}
                 onClick={() => handleTabSwitch('trades')}
               >
-                Trades
+                {t('header.trades_tab')}
               </button>
               <button
                 className={activeTab === 'tutorials' ? 'active' : ''}
                 onClick={() => handleTabSwitch('tutorials')}
               >
-                Tutorials
+                {t('header.tutorials_tab')}
               </button>
             </div>
           </div>
           <div className="header-actions">
+            <LanguageSelector />
             <button
               className="help-button"
               onClick={handleHelpClick}
-              title="View tutorial"
+              title={t('header.help_button')}
             >
               ?
             </button>
@@ -494,13 +498,13 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                     <span className="copy-icon">{copied ? '✓' : '⧉'}</span>
                   </button>
                   <button onClick={handleDisconnect} className="disconnect-button">
-                    Disconnect
+                    {t('header.disconnect')}
                   </button>
                 </>
               ) : (
                 <button className="wallet-chip connecting" disabled>
                   <span className="wallet-dot connecting"></span>
-                  <span className="wallet-address-text">Connecting...</span>
+                  <span className="wallet-address-text">{t('common.connecting')}</span>
                 </button>
               )
             ) : (
@@ -508,7 +512,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                 className="connect-wallet-header-button"
                 onClick={() => setShowConnectWalletDialog(true)}
               >
-                Connect Wallet
+                {t('header.connect_wallet')}
               </button>
             )}
           </div>
@@ -527,14 +531,14 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                   {isWalletConnected && isEligible === false && (
                     <div className="not-whitelisted-banner">
                       <span className="not-whitelisted-text">
-                        Not whitelisted to trade
+                        {t('trading.not_whitelisted')}
                       </span>
                     </div>
                   )}
                   {isWalletConnected && showStrategyRecommendation && isEligible !== false && authReady && (
                     <div className="strategy-recommendation-banner">
                       <span className="recommendation-text">
-                        No active strategy configured. Please create and activate a strategy in the Strategy Configuration section below before starting trading.
+                        {t('trading.no_active_strategy')}
                       </span>
                     </div>
                   )}
@@ -543,21 +547,21 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                       className="start-button connect-wallet-variant"
                       onClick={() => setShowConnectWalletDialog(true)}
                     >
-                      Connect Wallet to Trade
+                      {t('trading.connect_wallet_to_trade')}
                     </button>
                   ) : authState === 'error' ? (
                     <button
                       className="start-button error-retry"
                       onClick={() => authFlowService.startFlow()}
                     >
-                      Error - Click to Retry
+                      {t('trading.error_click_retry')}
                     </button>
                   ) : authState === 'signatureDeclined' ? (
                     <button
                       className="start-button error-retry"
                       onClick={() => authFlowService.retrySignature()}
                     >
-                      Sign Message to Continue
+                      {t('trading.sign_message_to_continue')}
                     </button>
                   ) : !authReady ? (
                     <button className="start-button" disabled>
@@ -572,14 +576,14 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                           className="start-button resume-button"
                           disabled={isEligible === false}
                         >
-                          Resume Session
+                          {t('trading.resume_session')}
                         </button>
                         <button
                           onClick={handleNewSessionClick}
                           className="start-button new-session-button"
                           disabled={isEligible === false}
                         >
-                          New Session
+                          {t('trading.new_session')}
                         </button>
                       </div>
                     ) : (
@@ -588,12 +592,12 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                         className="start-button"
                         disabled={isEligible === false}
                       >
-                        Start Trading
+                        {t('trading.start_trading')}
                       </button>
                     )
                   ) : (
                     <button onClick={handleStopTrading} className="stop-button">
-                      Stop Trading
+                      {t('trading.stop_trading')}
                     </button>
                   )}
                 </div>
@@ -603,7 +607,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
 
               <div className="markets-section">
                 <div className="section-header">
-                  <h2>Available Markets</h2>
+                  <h2>{t('dashboard.available_markets')}</h2>
                 </div>
                 <div className="section-content">
                   <MarketSelector markets={markets} />
@@ -614,12 +618,12 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
             <div className="dashboard-right-column">
               <div className="balances-section">
                 <div className="section-header">
-                  <h2>Balances</h2>
+                  <h2>{t('dashboard.balances')}</h2>
                   <div className="balances-header-right">
                     {tradingAccount && (
                       <div className="account-ids">
                         <div className="account-id-item">
-                          <span className="account-id-label">o2 Account:</span>
+                          <span className="account-id-label">{t('dashboard.o2_account')}</span>
                           <span
                             className="account-id-text clickable"
                             onClick={() => handleCopyAccountField(tradingAccount.id, 'account')}
@@ -639,7 +643,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                           </span>
                         </div>
                         <div className="account-id-item">
-                          <span className="account-id-label">Wallet:</span>
+                          <span className="account-id-label">{t('dashboard.wallet_label')}</span>
                           <span
                             className="account-id-text clickable"
                             onClick={() => handleCopyAccountField(tradingAccount.ownerAddress, 'owner')}
@@ -664,7 +668,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                       className="deposit-link"
                       onClick={() => window.open('https://o2.app', '_blank')}
                     >
-                      Deposit Funds on o2.app
+                      {t('dashboard.deposit_funds')}
                       <svg className="external-link-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                         <polyline points="15 3 21 3 21 9" />
@@ -684,19 +688,19 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
 
               <div className="strategy-settings-section">
                 <div className="section-header">
-                  <h2>Strategy Configuration</h2>
+                  <h2>{t('dashboard.strategy_configuration')}</h2>
                   <div className="section-header-actions">
                     <button
                       className="import-strategy-button"
                       onClick={() => strategyImportRef.current?.()}
                     >
-                      Import Strategy
+                      {t('dashboard.import_strategy')}
                     </button>
                     <button
                       className="create-strategy-button"
                       onClick={() => strategyCreateNewRef.current?.()}
                     >
-                      Create New Strategy
+                      {t('dashboard.create_new_strategy')}
                     </button>
                   </div>
                 </div>
@@ -746,28 +750,28 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
         <div className="confirm-dialog-overlay">
           <div className="confirm-dialog">
             <div className="confirm-dialog-header">
-              <h3>Create New Session</h3>
+              <h3>{t('new_session.title')}</h3>
             </div>
             <div className="confirm-dialog-body">
               {isCancellingOrders ? (
-                <p>Cancelling open orders...</p>
+                <p>{t('new_session.cancelling_orders')}</p>
               ) : (
                 <>
-                  <p>You are creating a new session. This will:</p>
+                  <p>{t('new_session.description')}</p>
                   <ul>
-                    <li>Cancel all your open orders</li>
-                    <li>Clear your old session data</li>
+                    <li>{t('new_session.cancel_orders')}</li>
+                    <li>{t('new_session.clear_session')}</li>
                   </ul>
-                  <p>Are you sure you want to proceed?</p>
+                  <p>{t('new_session.confirm_proceed')}</p>
                 </>
               )}
             </div>
             <div className="confirm-dialog-actions">
               <button onClick={handleCancelNewSession} className="cancel-btn" disabled={isCancellingOrders}>
-                Cancel
+                {t('common.cancel')}
               </button>
               <button onClick={handleConfirmNewSession} className="confirm-btn" disabled={isCancellingOrders}>
-                {isCancellingOrders ? 'Processing...' : 'Confirm'}
+                {isCancellingOrders ? t('common.processing') : t('common.confirm')}
               </button>
             </div>
           </div>

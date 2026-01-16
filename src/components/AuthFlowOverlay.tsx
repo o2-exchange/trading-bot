@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { authFlowService } from '../services/authFlowService'
 import { walletService } from '../services/walletService'
 import TermsOfUseDialog from './TermsOfUseDialog'
@@ -14,6 +15,7 @@ interface AuthFlowOverlayProps {
 }
 
 export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: AuthFlowOverlayProps) {
+  const { t } = useTranslation()
   const [authState, setAuthState] = useState(authFlowService.getState())
   const [dismissedDialogs, setDismissedDialogs] = useState<Set<string>>(new Set())
   const { addToast } = useToast()
@@ -39,7 +41,7 @@ export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: Auth
 
         // Show error as toast instead of blocking
         if (context.state === 'error' && context.error) {
-          addToast(`Authentication error: ${context.error}`, 'error')
+          addToast(t('auth.error', { message: context.error }), 'error')
         }
       }
     })
@@ -66,7 +68,7 @@ export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: Auth
         authFlowService.startFlow().catch((error) => {
           if (mounted) {
             console.error('Failed to start auth flow', error)
-            addToast(`Auth flow error: ${error.message}`, 'error')
+            addToast(t('auth.flow_error', { message: error.message }), 'error')
           }
         })
       } else {

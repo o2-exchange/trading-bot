@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js'
+import i18next from 'i18next'
 import { Market } from '../types/market'
 import { StrategyConfig, StrategyExecutionResult } from '../types/strategy'
 import { unifiedStrategyExecutor } from './unifiedStrategyExecutor'
@@ -202,7 +203,7 @@ class TradingEngine {
 
     if (activeConfigs.length === 0) {
       console.warn('[TradingEngine] No active strategy configs found! Please configure a strategy in the Strategies tab.')
-      this.emitStatus('No active strategies configured. Please set up a strategy first.', 'warning')
+      this.emitStatus(i18next.t('trading_console.no_active_strategies'), 'warning')
       // Still set isRunning to true so UI shows as active, but no trading will occur
       return
     }
@@ -263,7 +264,7 @@ class TradingEngine {
           startingQuoteBalance = quoteBalanceHuman.toFixed(2)
         } catch (error) {
           console.error(`[TradingEngine] ❌ Failed to fetch starting balances for ${marketPair}:`, error)
-          this.emitStatus(`${marketPair}: Could not capture starting balance`, 'warning')
+          this.emitStatus(i18next.t('trading_console.could_not_capture_balance', { pair: marketPair }), 'warning')
         }
 
         const strategyName = marketConfig.config.name || 'Custom'
@@ -312,7 +313,7 @@ class TradingEngine {
       this.startMarketTrading(marketId, marketConfig)
 
       // Emit strategy start message
-      this.emitStatus(`${marketPair}: Strategy started - ${strategyName}`, 'info')
+      this.emitStatus(i18next.t('trading_console.strategy_started', { pair: marketPair, name: strategyName }), 'info')
 
       // NOTE: Fill tracking is handled directly in executeTrade() (lines 347-407)
       // We don't start separate polling to avoid race conditions and duplicate processing
@@ -382,7 +383,7 @@ class TradingEngine {
         }
 
         // Emit status message
-        this.emitStatus(`${pair}: Order cancelled`, 'info')
+        this.emitStatus(i18next.t('trading_console.order_cancelled', { pair }), 'info')
       } catch (error) {
         console.error('[TradingEngine] Error handling order cancellation:', error)
       }
@@ -494,7 +495,7 @@ class TradingEngine {
     this.emitMultiContext()
 
     const pair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
-    this.emitStatus(`${pair}: Strategy deactivated`, 'info')
+    this.emitStatus(i18next.t('trading_console.strategy_deactivated', { pair }), 'info')
 
     console.log(`[TradingEngine] Stopped trading for ${marketId}. Remaining markets: ${this.marketConfigs.size}`)
 
@@ -502,7 +503,7 @@ class TradingEngine {
     if (this.marketConfigs.size === 0 && this.isRunning) {
       console.log('[TradingEngine] All markets stopped, stopping engine')
       this.stop()
-      this.emitStatus('All strategies deactivated - trading stopped', 'warning')
+      this.emitStatus(i18next.t('trading_console.all_deactivated'), 'warning')
     }
   }
 
@@ -561,7 +562,7 @@ class TradingEngine {
       startingQuoteBalance = quoteBalanceHuman.toFixed(2)
     } catch (error) {
       console.error(`[TradingEngine] ❌ Failed to fetch starting balances for ${marketPair}:`, error)
-      this.emitStatus(`${marketPair}: Could not capture starting balance`, 'warning')
+      this.emitStatus(i18next.t('trading_console.could_not_capture_balance', { pair: marketPair }), 'warning')
     }
 
     const strategyName = marketConfig.config.name || 'Custom'
@@ -609,7 +610,7 @@ class TradingEngine {
     // Start trading loop
     this.startMarketTrading(marketId, marketConfig)
 
-    this.emitStatus(`${marketPair}: Strategy started - ${strategyName}`, 'info')
+    this.emitStatus(i18next.t('trading_console.strategy_started', { pair: marketPair, name: strategyName }), 'info')
     console.log(`[TradingEngine] Added ${marketPair} to active trading. Total markets: ${this.marketConfigs.size}`)
   }
 
@@ -693,7 +694,7 @@ class TradingEngine {
         console.log(`[TradingEngine] Executing strategy for ${marketConfig.market.market_id}`)
 
         // Debug: Strategy cycle start
-        this.emitStatus(`${pair}: Cycle #${this.sessionTradeCycles} starting`, 'info', 'debug')
+        this.emitStatus(i18next.t('trading_console.cycle_starting', { pair, cycle: this.sessionTradeCycles }), 'info', 'debug')
 
         // Refresh config from database to get latest risk management settings
         const storedConfig = await db.strategyConfigs.get(marketConfig.market.market_id)
@@ -708,7 +709,7 @@ class TradingEngine {
           : null
         if (this.isTradingPausedDueToSessionLoss(marketConfig.config, sessionForPauseCheck)) {
           const maxLoss = marketConfig.config.riskManagement?.maxSessionLossUsd || 0
-          this.emitStatus(`${pair}: Trading paused (session loss exceeded $${maxLoss}). End session to reset.`, 'warning')
+          this.emitStatus(i18next.t('trading_console.session_loss_exceeded', { pair, maxLoss }), 'warning')
           // Reschedule with longer delay when paused
           marketConfig.nextRunAt = Date.now() + 60000 // Check again in 1 minute
           if (this.isRunning) {
@@ -762,13 +763,18 @@ class TradingEngine {
           if (quoteValueUsd < minOrderSizeUsd && baseValueUsd < minOrderSizeUsd && hasNoOpenOrders) {
             // Both sides below minimum AND no orders waiting - can't place any orders
             this.emitStatus(
-              `${pair}: Cannot place orders - both balances below $${minOrderSizeUsd} (Base: $${baseValueUsd.toFixed(2)}, Quote: $${quoteValueUsd.toFixed(2)})`,
+              i18next.t('trading_console.balance_too_low', { pair, minOrder: minOrderSizeUsd }),
               'warning'
             )
           }
 
           // Debug mode: emit balance update
-          this.emitStatus(`${pair}: Balance - ${baseBalanceHuman.toFixed(6)} ${marketConfig.market.base.symbol}, $${quoteBalanceHuman.toFixed(2)}`, 'info', 'debug')
+          this.emitStatus(i18next.t('trading_console.balance_info', {
+            pair,
+            baseBalance: baseBalanceHuman.toFixed(6),
+            baseSymbol: marketConfig.market.base.symbol,
+            quoteBalance: quoteBalanceHuman.toFixed(2)
+          }), 'info', 'debug')
 
           const nextRunIn = marketConfig.nextRunAt ? Math.max(0, Math.round((marketConfig.nextRunAt - Date.now()) / 1000)) : 0
 
@@ -838,8 +844,8 @@ class TradingEngine {
 
         if (!result) {
           console.warn(`[TradingEngine] Strategy returned no result for ${marketId}`)
-          const pair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
-          this.emitStatus(`${pair}: Strategy returned no result`, 'warning')
+          const pairNoResult = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
+          this.emitStatus(i18next.t('trading_console.strategy_no_result', { pair: pairNoResult }), 'warning')
           // Reschedule
           marketConfig.nextRunAt = Date.now() + 10000
           if (this.isRunning) {
@@ -942,14 +948,26 @@ class TradingEngine {
               await tradeHistoryService.addTrade(trade)
 
               // Format placement message with human-readable values
-              const pair = orderExec.marketPair || `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
+              const orderPair = orderExec.marketPair || `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
               const amount = orderExec.quantityHuman || 'N/A'
               const asset = marketConfig.market.base.symbol
-              const orderPrice = orderExec.priceHuman ? `$${orderExec.priceHuman}` : 'N/A'
-              const orderType = orderExec.isLimitOrder ? 'LIMIT' : 'MARKET'
+              const orderPrice = orderExec.priceHuman || 'N/A'
+              const orderType = orderExec.isLimitOrder
+                ? i18next.t('trading_console.order_type_limit')
+                : i18next.t('trading_console.order_type_market')
+              const translatedSide = orderExec.side === 'Buy'
+                ? i18next.t('trading_console.side_buy')
+                : i18next.t('trading_console.side_sell')
 
               // Build placement message (fill messages come from trackOrderFills)
-              const statusMsg = `${pair} ${orderType}: ${orderExec.side} order placed for ${amount} ${asset} at ${orderPrice}`
+              const statusMsg = i18next.t('trading_console.order_placed', {
+                pair: orderPair,
+                orderType,
+                side: translatedSide,
+                amount,
+                asset,
+                price: orderPrice
+              })
 
               this.emitStatus(statusMsg, 'info')
 
@@ -979,12 +997,22 @@ class TradingEngine {
               console.error(`[TradingEngine] Order failed: ${orderExec.side} - ${orderExec.error}`)
 
               // Format error message with market pair and order type
-              const pair = orderExec.marketPair || `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
-              const orderType = orderExec.isLimitOrder ? 'LIMIT' : 'MARKET'
+              const failedPair = orderExec.marketPair || `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
+              const failedOrderType = orderExec.isLimitOrder
+                ? i18next.t('trading_console.order_type_limit')
+                : i18next.t('trading_console.order_type_market')
+              const failedSide = orderExec.side === 'Buy'
+                ? i18next.t('trading_console.side_buy')
+                : i18next.t('trading_console.side_sell')
               const errorMsg = orderExec.error || 'Unknown error'
 
               // Simple mode: concise error
-              this.emitStatus(`${pair} ${orderType}: ${orderExec.side} order failed - ${errorMsg}`, 'error')
+              this.emitStatus(i18next.t('trading_console.order_failed', {
+                pair: failedPair,
+                orderType: failedOrderType,
+                side: failedSide,
+                error: errorMsg
+              }), 'error')
 
               // Debug mode: full error details as JSON if available
               if (orderExec.errorDetails) {
@@ -1018,7 +1046,7 @@ class TradingEngine {
 
             // Debug: order tracking info
             if (fillsDetected.size > 0) {
-              this.emitStatus(`${pair}: Detected ${fillsDetected.size} fill(s)`, 'info', 'debug')
+              this.emitStatus(i18next.t('trading_console.fills_detected', { pair, count: fillsDetected.size }), 'info', 'debug')
             }
 
             // Emit fill detection messages and record confirmed fills
@@ -1036,12 +1064,24 @@ class TradingEngine {
                 : new Decimal(fillData.order.price).div(10 ** market.quote.decimals)
               const side = fillData.order.side === OrderSide.Buy ? 'Buy' : 'Sell'
               // Use strategy config order type (API doesn't return accurate order_type)
-              const fillOrderType = marketConfig.config.orderConfig.orderType === 'Market' ? 'MARKET' : 'LIMIT'
+              const fillOrderType = marketConfig.config.orderConfig.orderType === 'Market'
+                ? i18next.t('trading_console.order_type_market')
+                : i18next.t('trading_console.order_type_limit')
+              const fillSide = fillData.order.side === OrderSide.Buy
+                ? i18next.t('trading_console.side_buy')
+                : i18next.t('trading_console.side_sell')
 
               // Only process if there's a new fill (not just re-detecting old fill)
               if (newFillQtyHuman.gt(0)) {
                 this.emitStatus(
-                  `${pair} ${fillOrderType}: ${side} filled ${newFillQtyHuman.toFixed(3).replace(/\.?0+$/, '')} ${market.base.symbol} @ $${fillPriceHuman.toFixed(market.quote.decimals).replace(/\.?0+$/, '')}`,
+                  i18next.t('trading_console.order_filled', {
+                    pair,
+                    orderType: fillOrderType,
+                    side: fillSide,
+                    qty: newFillQtyHuman.toFixed(3).replace(/\.?0+$/, ''),
+                    symbol: market.base.symbol,
+                    price: fillPriceHuman.toFixed(market.quote.decimals).replace(/\.?0+$/, '')
+                  }),
                   'success'
                 )
 
@@ -1119,7 +1159,12 @@ class TradingEngine {
 
                       // Emit status notification with order details
                       this.emitStatus(
-                        `${pair}: Sell ${quantityHuman.toFixed(3).replace(/\.?0+$/, '')} ${market.base.symbol} @ $${priceHuman.toFixed(market.quote.decimals).replace(/\.?0+$/, '')} (limit)`,
+                        i18next.t('trading_console.sell_order_waiting', {
+                          pair,
+                          qty: quantityHuman.toFixed(3).replace(/\.?0+$/, ''),
+                          symbol: market.base.symbol,
+                          price: priceHuman.toFixed(market.quote.decimals).replace(/\.?0+$/, '')
+                        }),
                         'success'
                       )
                     }
@@ -1151,7 +1196,8 @@ class TradingEngine {
         }
       } catch (error: any) {
         console.error(`[TradingEngine] Error executing strategy for ${marketId}:`, error)
-        this.emitStatus(`[${marketConfig.market.market_id}] Error: ${error.message}`, 'error')
+        const errorPair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
+        this.emitStatus(i18next.t('trading_console.error_in_strategy', { pair: errorPair, error: error.message }), 'error')
 
         // Reschedule with delay on error
         marketConfig.nextRunAt = Date.now() + 10000
@@ -1318,7 +1364,7 @@ class TradingEngine {
       }
 
       if (cancelledCount > 0) {
-        this.emitStatus(`Cancelled ${cancelledCount} order(s) due to timeout`, 'warning')
+        this.emitStatus(i18next.t('trading_console.orders_timeout', { count: cancelledCount }), 'warning')
       }
     } catch (error) {
       console.error('[TradingEngine] Error checking order timeouts:', error)

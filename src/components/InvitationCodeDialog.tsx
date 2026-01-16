@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { authFlowService } from '../services/authFlowService'
 import { eligibilityService } from '../services/eligibilityService'
 import { useToast } from './ToastProvider'
@@ -10,6 +11,7 @@ interface InvitationCodeDialogProps {
 }
 
 export default function InvitationCodeDialog({ isOpen, onClose }: InvitationCodeDialogProps) {
+  const { t } = useTranslation()
   const [code, setCode] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { addToast } = useToast()
@@ -26,17 +28,17 @@ export default function InvitationCodeDialog({ isOpen, onClose }: InvitationCode
 
   const handleSubmit = async () => {
     if (!code.trim()) {
-      addToast('Please enter an invitation code', 'warning')
+      addToast(t('invitation.please_enter'), 'warning')
       return
     }
 
     setIsSubmitting(true)
     try {
       await authFlowService.assignInvitationCode(code.trim())
-      addToast('Invitation code accepted', 'success')
+      addToast(t('invitation.accepted'), 'success')
       onClose()
     } catch (error: any) {
-      addToast(`Failed to assign invitation code: ${error.message}`, 'error')
+      addToast(t('invitation.failed', { message: error.message }), 'error')
     } finally {
       setIsSubmitting(false)
     }
@@ -49,16 +51,16 @@ export default function InvitationCodeDialog({ isOpen, onClose }: InvitationCode
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="dialog-content" onClick={(e) => e.stopPropagation()}>
-        <h2>Enter Invitation Code</h2>
+        <h2>{t('invitation.title')}</h2>
         <p className="dialog-description">
-          If you have an invitation code, enter it below to gain access to trading.
+          {t('invitation.description')}
         </p>
         <div className="code-input-group">
           <input
             type="text"
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="Enter invitation code"
+            placeholder={t('invitation.placeholder')}
             className="code-input"
             disabled={isSubmitting}
             onKeyPress={(e) => {
@@ -70,14 +72,14 @@ export default function InvitationCodeDialog({ isOpen, onClose }: InvitationCode
         </div>
         <div className="dialog-actions">
           <button className="skip-button" onClick={handleSkip} disabled={isSubmitting}>
-            Skip
+            {t('common.skip')}
           </button>
           <button
             className="submit-button"
             onClick={handleSubmit}
             disabled={!code.trim() || isSubmitting}
           >
-            {isSubmitting ? 'Submitting...' : 'Submit'}
+            {isSubmitting ? t('invitation.submitting') : t('common.submit')}
           </button>
         </div>
       </div>

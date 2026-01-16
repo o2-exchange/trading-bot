@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Market } from '../types/market'
 import { useToast } from './ToastProvider'
 
@@ -7,6 +8,7 @@ interface MarketSelectorProps {
 }
 
 export default function MarketSelector({ markets }: MarketSelectorProps) {
+  const { t } = useTranslation()
   const { addToast } = useToast()
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
@@ -14,10 +16,10 @@ export default function MarketSelector({ markets }: MarketSelectorProps) {
     try {
       await navigator.clipboard.writeText(text)
       setCopiedId(marketId)
-      addToast('Copied to clipboard', 'success')
+      addToast(t('common.copied'), 'success')
       setTimeout(() => setCopiedId(null), 2000)
     } catch (error) {
-      addToast('Failed to copy', 'error')
+      addToast(t('common.copy_failed'), 'error')
     }
   }
 
@@ -36,12 +38,12 @@ export default function MarketSelector({ markets }: MarketSelectorProps) {
               <span className="quote-symbol">{market.quote.symbol}</span>
             </div>
             <div className="market-details">
-              <div 
+              <div
                 className="address-chip clickable"
                 onClick={() => copyToClipboard(market.market_id, market.market_id)}
-                title="Click to copy Market ID"
+                title={t('market.click_to_copy_market_id')}
               >
-                <span className="chip-label">Market ID</span>
+                <span className="chip-label">{t('market.market_id')}</span>
                 <span className="chip-value">{formatAddress(market.market_id)}</span>
                 <svg className="chip-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   {copiedId === market.market_id ? (
@@ -54,12 +56,12 @@ export default function MarketSelector({ markets }: MarketSelectorProps) {
                   )}
                 </svg>
               </div>
-              <div 
+              <div
                 className="address-chip clickable"
                 onClick={() => copyToClipboard(market.contract_id, `contract-${market.market_id}`)}
-                title="Click to copy Contract ID"
+                title={t('market.click_to_copy_contract')}
               >
-                <span className="chip-label">Contract</span>
+                <span className="chip-label">{t('market.contract')}</span>
                 <span className="chip-value">{formatAddress(market.contract_id)}</span>
                 <svg className="chip-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   {copiedId === `contract-${market.market_id}` ? (

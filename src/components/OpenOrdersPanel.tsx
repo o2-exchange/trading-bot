@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import Decimal from 'decimal.js'
 import { Order } from '../types/order'
 import { Market } from '../types/market'
@@ -9,6 +10,7 @@ import { tradingEngine } from '../services/tradingEngine'
 import './OpenOrdersPanel.css'
 
 export default function OpenOrdersPanel() {
+  const { t } = useTranslation()
   const [orders, setOrders] = useState<Order[]>([])
   const [markets, setMarkets] = useState<Map<string, Market>>(new Map())
   const [loading, setLoading] = useState(true)
@@ -114,22 +116,22 @@ export default function OpenOrdersPanel() {
 
     // Less than 1 minute
     if (diff < 60 * 1000) {
-      return 'Just now'
+      return t('open_orders.just_now')
     }
     // Less than 1 hour
     if (diff < 60 * 60 * 1000) {
       const mins = Math.floor(diff / (60 * 1000))
-      return `${mins}m ago`
+      return t('open_orders.minutes_ago', { count: mins })
     }
     // Less than 24 hours
     if (diff < 24 * 60 * 60 * 1000) {
       const hours = Math.floor(diff / (60 * 60 * 1000))
-      return `${hours}h ago`
+      return t('open_orders.hours_ago', { count: hours })
     }
     // Less than 7 days
     if (diff < 7 * 24 * 60 * 60 * 1000) {
       const days = Math.floor(diff / (24 * 60 * 60 * 1000))
-      return `${days}d ago`
+      return t('open_orders.days_ago', { count: days })
     }
     // Otherwise show date
     const date = new Date(timestamp)
@@ -172,7 +174,7 @@ export default function OpenOrdersPanel() {
     <div className="open-orders-panel">
       <div className="panel-header">
         <div className="panel-title">
-          <h3>Open Orders</h3>
+          <h3>{t('open_orders.title')}</h3>
           {orders.length > 0 && (
             <span className="order-count">{orders.length}</span>
           )}
@@ -182,7 +184,7 @@ export default function OpenOrdersPanel() {
             className="refresh-btn"
             onClick={handleRefresh}
             disabled={loading}
-            title="Refresh orders"
+            title={t('open_orders.refresh')}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 2v6h-6" />
@@ -196,20 +198,20 @@ export default function OpenOrdersPanel() {
 
       <div className="panel-content">
         {loading ? (
-          <div className="panel-loading">Loading...</div>
+          <div className="panel-loading">{t('common.loading')}</div>
         ) : orders.length === 0 ? (
-          <div className="panel-empty">No open orders</div>
+          <div className="panel-empty">{t('open_orders.no_orders')}</div>
         ) : (
           <div className="orders-table-wrapper">
             <table className="compact-orders-table">
               <thead>
                 <tr>
-                  <th>Market</th>
-                  <th>Side</th>
-                  <th>Price</th>
-                  <th>Qty</th>
-                  <th>Total</th>
-                  <th>Time</th>
+                  <th>{t('open_orders.market')}</th>
+                  <th>{t('open_orders.side')}</th>
+                  <th>{t('open_orders.price')}</th>
+                  <th>{t('open_orders.qty')}</th>
+                  <th>{t('open_orders.total')}</th>
+                  <th>{t('open_orders.time')}</th>
                   <th></th>
                 </tr>
               </thead>
@@ -232,7 +234,7 @@ export default function OpenOrdersPanel() {
                           className="cancel-btn"
                           onClick={() => handleCancelOrder(order)}
                           disabled={cancellingOrders.has(order.order_id)}
-                          title="Cancel order"
+                          title={t('open_orders.cancel_order')}
                         >
                           {cancellingOrders.has(order.order_id) ? '...' : '×'}
                         </button>

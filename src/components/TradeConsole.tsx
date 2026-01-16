@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { tradingEngine, TradingContext } from '../services/tradingEngine'
 import { tradingSessionService } from '../services/tradingSessionService'
 import { walletService } from '../services/walletService'
@@ -17,6 +18,7 @@ interface ConsoleMessage {
 }
 
 export default function TradeConsole({ isTrading, onViewOrders }: TradeConsoleProps) {
+  const { t } = useTranslation()
   const [consoleCollapsed, setConsoleCollapsed] = useState(false)
   const [consoleMessages, setConsoleMessages] = useState<ConsoleMessage[]>([])
   const [contexts, setContexts] = useState<Map<string, TradingContext>>(new Map())
@@ -295,7 +297,7 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
         className="trade-console-header"
         onClick={() => setConsoleCollapsed(!consoleCollapsed)}
       >
-        <span className="console-title">Trade Execution Console</span>
+        <span className="console-title">{t('console.title')}</span>
         <div className="console-header-right">
           <button
             className="console-download-btn"
@@ -303,24 +305,24 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
               e.stopPropagation()
               downloadLogs()
             }}
-            title="Download logs as JSON"
+            title={t('console.export_logs')}
           >
-            Export Logs
+            {t('console.export_logs')}
           </button>
           <button
             className={`console-mode-toggle ${consoleMode}`}
             onClick={handleConsoleModeToggle}
-            title={consoleMode === 'simple' ? 'Click for debug mode (more details)' : 'Click for simple mode (essential only)'}
+            title={consoleMode === 'simple' ? t('console.click_debug') : t('console.click_simple')}
           >
-            {consoleMode === 'simple' ? 'Simple Mode' : 'Debug Mode'}
+            {consoleMode === 'simple' ? t('console.simple_mode') : t('console.debug_mode')}
           </button>
           {isTrading && countdown > 0 && (
             <span className="console-countdown">
-              Next: {countdown}s
+              {t('console.next_countdown', { seconds: countdown })}
             </span>
           )}
           <span className={`console-status ${isTrading ? 'active' : 'inactive'}`}>
-            {isTrading ? 'LIVE' : 'OFF'}
+            {isTrading ? t('console.status_live') : t('console.status_off')}
           </span>
         </div>
       </div>
@@ -346,16 +348,16 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
                   {/* Row 1: Market info */}
                   <div className="market-header">
                     <div className="market-info-item">
-                      <span className="info-label">Market:</span>
+                      <span className="info-label">{t('console.market_label')}</span>
                       <span className="info-value market-pair">{ctx.pair}</span>
                     </div>
                     <div className="market-info-item">
-                      <span className="info-label">Price:</span>
+                      <span className="info-label">{t('console.price_label')}</span>
                       <span className="info-value">{ctx.currentPrice || '--'}</span>
                     </div>
                     {ctx.strategyName && (
                       <div className="market-info-item">
-                        <span className="info-label">Strategy:</span>
+                        <span className="info-label">{t('console.strategy_label')}</span>
                         <span className="info-value strategy-value">{ctx.strategyName}</span>
                       </div>
                     )}
@@ -383,21 +385,21 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
                   {/* Row 3: Metrics */}
                   <div className="market-metrics">
                     <span className="metric">
-                      <span className="metric-label">Vol</span>
+                      <span className="metric-label">{t('console.volume')}</span>
                       <span className="metric-value">${ctx.totalVolume?.toFixed(2) || '0.00'}</span>
                     </span>
                     <span className="metric">
-                      <span className="metric-label">P&L</span>
+                      <span className="metric-label">{t('console.pnl')}</span>
                       <span className={`metric-value ${(ctx.realizedPnL || 0) >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
                         {(ctx.realizedPnL || 0) >= 0 ? '+' : ''}${(ctx.realizedPnL || 0).toFixed(2)}
                       </span>
                     </span>
                     <span className="metric">
-                      <span className="metric-label">Fees</span>
+                      <span className="metric-label">{t('console.fees')}</span>
                       <span className="metric-value fee">${ctx.totalFees?.toFixed(4) || '0.0000'}</span>
                     </span>
                     <span className="metric">
-                      <span className="metric-label">Trades</span>
+                      <span className="metric-label">{t('console.trades')}</span>
                       <span className="metric-value">{ctx.tradeCount || 0}</span>
                     </span>
                   </div>
@@ -410,11 +412,11 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
           {pendingOrders.map((ctx) => (
             <div key={`pending-${ctx.pair}`} className="pending-order-strip">
               <span className="pending-strip-text">
-                {ctx.pair}: Sell order waiting: {ctx.pendingSellOrder!.quantity} {ctx.pair?.split('/')[0]} @ ${ctx.pendingSellOrder!.price}
+                {t('console.sell_order_waiting', { pair: ctx.pair, quantity: ctx.pendingSellOrder!.quantity, symbol: ctx.pair?.split('/')[0], price: ctx.pendingSellOrder!.price })}
               </span>
               {onViewOrders && (
                 <button className="view-orders-btn" onClick={onViewOrders}>
-                  View Orders
+                  {t('console.view_orders')}
                 </button>
               )}
             </div>
@@ -439,9 +441,9 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
             ) : (
               <div className="console-empty">
                 {isTrading ? (
-                  <>Starting trading engine...</>
+                  <>{t('console.starting_engine')}</>
                 ) : (
-                  <>Trading inactive. Click "Start Trading" to begin.</>
+                  <>{t('console.trading_inactive')}</>
                 )}
               </div>
             )}

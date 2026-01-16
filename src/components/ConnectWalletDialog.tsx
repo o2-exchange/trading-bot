@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { walletService } from '../services/walletService'
 import { useToast } from './ToastProvider'
 import './ConnectWalletDialog.css'
@@ -58,6 +59,7 @@ interface ConnectWalletDialogProps {
 }
 
 export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProps) {
+  const { t } = useTranslation()
   const [connecting, setConnecting] = useState<string | null>(null)
   const [ethereumConnectors, setEthereumConnectors] = useState<Array<{ id: string; name: string; type: 'ethereum' }>>([])
   const { addToast } = useToast()
@@ -74,17 +76,17 @@ export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProp
     // Timeout to prevent button getting stuck
     const timeout = setTimeout(() => {
       setConnecting(null)
-      addToast('Connection timed out. Please try again.', 'error')
+      addToast(t('wallet.connection_timeout'), 'error')
     }, 30000) // 30 second timeout
 
     try {
       await walletService.connectFuelWallet(walletType)
       clearTimeout(timeout)
-      addToast('Wallet connected successfully', 'success')
+      addToast(t('wallet.connected_successfully'), 'success')
       onClose()
     } catch (error: any) {
       clearTimeout(timeout)
-      addToast(`Failed to connect wallet: ${error.message}`, 'error')
+      addToast(t('wallet.connection_failed', { message: error.message }), 'error')
     } finally {
       setConnecting(null)
     }
@@ -97,17 +99,17 @@ export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProp
     // Timeout to prevent button getting stuck
     const timeout = setTimeout(() => {
       setConnecting(null)
-      addToast('Connection timed out. Please try again.', 'error')
+      addToast(t('wallet.connection_timeout'), 'error')
     }, 50000) // 50 second timeout
 
     try {
       await walletService.connectEthereumWallet(connectorName)
       clearTimeout(timeout)
-      addToast('Wallet connected successfully', 'success')
+      addToast(t('wallet.connected_successfully'), 'success')
       onClose()
     } catch (error: any) {
       clearTimeout(timeout)
-      addToast(`Failed to connect wallet: ${error.message}`, 'error')
+      addToast(t('wallet.connection_failed', { message: error.message }), 'error')
     } finally {
       setConnecting(null)
     }
@@ -123,7 +125,7 @@ export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProp
     <div className="connect-wallet-dialog-overlay" onClick={handleOverlayClick}>
       <div className="connect-wallet-dialog">
         <div className="dialog-header">
-          <h2>Connect Wallet</h2>
+          <h2>{t('wallet.connect_title')}</h2>
           <button className="close-button" onClick={onClose} aria-label="Close">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -132,11 +134,11 @@ export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProp
         </div>
 
         <div className="warning-banner">
-          Experimental software. Trade at your own risk and only with funds you can afford to lose.
+          {t('wallet.warning_banner')}
         </div>
 
         <div className="wallet-options">
-          <h3>Fuel Wallets</h3>
+          <h3>{t('wallet.fuel_wallets')}</h3>
           <div className="wallet-grid">
             <button
               className="wallet-button"
@@ -144,7 +146,7 @@ export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProp
               disabled={!!connecting}
             >
               <img src={getWalletIcon('fuel')} alt="Fuel Wallet" className="wallet-icon" />
-              <span>{connecting === 'fuel' ? 'Connecting...' : 'Fuel Wallet'}</span>
+              <span>{connecting === 'fuel' ? t('common.connecting') : t('wallet.fuel_wallet')}</span>
             </button>
             <button
               className="wallet-button"
@@ -152,7 +154,7 @@ export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProp
               disabled={!!connecting}
             >
               <img src={getWalletIcon('fuelet')} alt="Fuelet" className="wallet-icon" />
-              <span>{connecting === 'fuelet' ? 'Connecting...' : 'Fuelet'}</span>
+              <span>{connecting === 'fuelet' ? t('common.connecting') : t('wallet.fuelet')}</span>
             </button>
             <button
               className="wallet-button"
@@ -160,13 +162,13 @@ export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProp
               disabled={!!connecting}
             >
               <img src={getWalletIcon('bako-safe')} alt="Bako Safe" className="wallet-icon" />
-              <span>{connecting === 'bako-safe' ? 'Connecting...' : 'Bako Safe'}</span>
+              <span>{connecting === 'bako-safe' ? t('common.connecting') : t('wallet.bako_safe')}</span>
             </button>
           </div>
 
           {ethereumConnectors.length > 0 && (
             <>
-              <h3>Ethereum Wallets</h3>
+              <h3>{t('wallet.ethereum_wallets')}</h3>
               <div className="wallet-grid">
                 {ethereumConnectors.map((connector) => {
                   const icon = getWalletIcon(connector.name)
@@ -178,7 +180,7 @@ export default function ConnectWalletDialog({ onClose }: ConnectWalletDialogProp
                       disabled={!!connecting}
                     >
                       {icon && <img src={icon} alt={connector.name} className="wallet-icon" />}
-                      <span>{connecting === connector.name ? 'Connecting...' : connector.name}</span>
+                      <span>{connecting === connector.name ? t('common.connecting') : connector.name}</span>
                     </button>
                   )
                 })}

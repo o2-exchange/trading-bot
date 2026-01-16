@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { authFlowService } from '../services/authFlowService'
 import { useToast } from './ToastProvider'
 import './SignMessageDialog.css'
@@ -9,6 +10,7 @@ interface SignMessageDialogProps {
 }
 
 export default function SignMessageDialog({ isOpen, onClose }: SignMessageDialogProps) {
+  const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
   const { addToast } = useToast()
 
@@ -27,7 +29,7 @@ export default function SignMessageDialog({ isOpen, onClose }: SignMessageDialog
       await authFlowService.confirmSignature()
       onClose()
     } catch (error: any) {
-      addToast(`Failed to sign message: ${error.message}`, 'error')
+      addToast(t('sign_message.failed', { message: error.message }), 'error')
       setIsLoading(false)
     }
   }
@@ -43,15 +45,13 @@ export default function SignMessageDialog({ isOpen, onClose }: SignMessageDialog
         className="dialog-content sign-message-dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2>Verify Wallet Ownership</h2>
+        <h2>{t('sign_message.title')}</h2>
         <div className="sign-message-content">
           <p>
-            Sign this message to securely connect your wallet and create a
-            trading session.
+            {t('sign_message.description')}
           </p>
           <p className="sign-message-note">
-            This is not a blockchain transaction, does not cost any gas, and
-            does not grant permission to move funds from your wallet.
+            {t('sign_message.note')}
           </p>
         </div>
         <div className="dialog-actions">
@@ -60,14 +60,14 @@ export default function SignMessageDialog({ isOpen, onClose }: SignMessageDialog
             onClick={handleCancel}
             disabled={isLoading}
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="sign-button"
             onClick={handleSign}
             disabled={isLoading}
           >
-            {isLoading ? "Waiting for signature..." : "Sign & Continue"}
+            {isLoading ? t('sign_message.waiting') : t('sign_message.sign_button')}
           </button>
         </div>
       </div>

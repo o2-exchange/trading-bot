@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { PostHogProvider } from 'posthog-js/react'
+import './i18n' // Initialize i18n before App
 import App from './App.tsx'
 import { analyticsService } from './services/analyticsService'
 import './index.css'

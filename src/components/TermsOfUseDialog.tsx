@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { authFlowService } from '../services/authFlowService'
 import { walletService } from '../services/walletService'
 import { useToast } from './ToastProvider'
@@ -11,6 +12,7 @@ interface TermsOfUseDialogProps {
 }
 
 export default function TermsOfUseDialog({ isOpen, onClose }: TermsOfUseDialogProps) {
+  const { t } = useTranslation()
   const [accepted, setAccepted] = useState(false)
   const { addToast } = useToast()
   const dialogOpenTimeRef = useRef<number>(0)
@@ -26,7 +28,7 @@ export default function TermsOfUseDialog({ isOpen, onClose }: TermsOfUseDialogPr
 
   const handleAccept = async () => {
     if (!accepted) {
-      addToast('Please accept the terms of use to continue', 'warning')
+      addToast(t('terms.accept_to_continue'), 'warning')
       return
     }
 
@@ -40,7 +42,7 @@ export default function TermsOfUseDialog({ isOpen, onClose }: TermsOfUseDialogPr
 
       onClose()
     } catch (error: any) {
-      addToast(`Failed to accept terms: ${error.message}`, 'error')
+      addToast(t('terms.accept_failed', { message: error.message }), 'error')
     }
   }
 
@@ -52,19 +54,19 @@ export default function TermsOfUseDialog({ isOpen, onClose }: TermsOfUseDialogPr
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="dialog-content" onClick={(e) => e.stopPropagation()}>
-        <h2>Terms of Use</h2>
+        <h2>{t('terms.title')}</h2>
         <div className="terms-content">
-          <p>By using this trading bot, you agree to the following terms:</p>
+          <p>{t('terms.intro')}</p>
           <ul>
-            <li>You are responsible for all trading activities</li>
-            <li>You understand the risks involved in automated trading</li>
-            <li>You will not use this bot for illegal activities</li>
-            <li>You acknowledge that trading involves risk of loss</li>
-            <li>You acknowledge this bot likely has bugs</li>
-            <li>You acknowledge this is highly experimental software</li>
+            <li>{t('terms.responsibility')}</li>
+            <li>{t('terms.risks')}</li>
+            <li>{t('terms.legal')}</li>
+            <li>{t('terms.loss_risk')}</li>
+            <li>{t('terms.bugs')}</li>
+            <li>{t('terms.experimental')}</li>
           </ul>
           <p>
-            Please read the full terms of use at{" "}
+            {t('terms.full_terms')}{" "}
             <a
               href="https://o2.app/terms-of-use"
               target="_blank"
@@ -81,19 +83,19 @@ export default function TermsOfUseDialog({ isOpen, onClose }: TermsOfUseDialogPr
               checked={accepted}
               onChange={(e) => setAccepted(e.target.checked)}
             />
-            <span>I have read and agree to the Terms of Use</span>
+            <span>{t('terms.checkbox_label')}</span>
           </label>
         </div>
         <div className="dialog-actions">
           <button className="decline-button" onClick={handleDecline}>
-            Decline
+            {t('terms.decline')}
           </button>
           <button
             className="accept-button"
             onClick={handleAccept}
             disabled={!accepted}
           >
-            Accept
+            {t('terms.accept')}
           </button>
         </div>
       </div>

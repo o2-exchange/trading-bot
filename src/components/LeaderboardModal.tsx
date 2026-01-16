@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { LeaderboardResponse, LeaderboardItem } from '../types/competition'
 import './LeaderboardModal.css'
 
@@ -8,6 +9,8 @@ interface LeaderboardModalProps {
 }
 
 export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: LeaderboardModalProps) {
+  const { t } = useTranslation()
+
   if (!isOpen) return null
 
   const formatNumber = (value: string, decimals: number = 9): string => {
@@ -75,7 +78,7 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
     <div className="leaderboard-modal-overlay" onClick={onClose}>
       <div className="leaderboard-modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="leaderboard-modal-header">
-          <h2>{leaderboardData?.title || 'Leaderboard'}</h2>
+          <h2>{leaderboardData?.title || t('leaderboard.title')}</h2>
           <button className="leaderboard-modal-close" onClick={onClose}>
             ×
           </button>
@@ -83,7 +86,7 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
 
         {leaderboardData?.rewardPool && (
           <div className="leaderboard-reward-info">
-            <span className="reward-label">Reward Pool:</span>
+            <span className="reward-label">{t('leaderboard.reward_pool')}</span>
             <span className="reward-value">{leaderboardData.rewardPool}</span>
           </div>
         )}
@@ -92,11 +95,11 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
           <table className="leaderboard-table">
             <thead>
               <tr>
-                <th>Rank</th>
-                <th>Trader</th>
-                <th>Score</th>
-                <th>Volume</th>
-                <th>PnL</th>
+                <th>{t('leaderboard.rank')}</th>
+                <th>{t('leaderboard.trader')}</th>
+                <th>{t('leaderboard.score')}</th>
+                <th>{t('leaderboard.volume')}</th>
+                <th>{t('leaderboard.pnl')}</th>
               </tr>
             </thead>
             <tbody>

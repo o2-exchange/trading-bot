@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { competitionService } from '../services/competitionService'
 import { Competition, LeaderboardResponse } from '../types/competition'
 import LeaderboardModal from './LeaderboardModal'
@@ -9,6 +10,7 @@ interface CompetitionPanelProps {
 }
 
 export default function CompetitionPanel({ walletAddress }: CompetitionPanelProps) {
+  const { t } = useTranslation()
   const [activeCompetition, setActiveCompetition] = useState<Competition | null>(null)
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -18,7 +20,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
 
   const formatTimeRemaining = useCallback((endDate: string | null): string => {
     if (!endDate) {
-      return 'No end date'
+      return t('competition.no_end_date')
     }
 
     const now = new Date().getTime()
@@ -26,7 +28,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
     const diff = end - now
 
     if (diff <= 0) {
-      return 'Ended'
+      return t('competition.ended')
     }
 
     const days = Math.floor(diff / (1000 * 60 * 60 * 24))
@@ -68,7 +70,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
       }
     } catch (err: any) {
       console.error('Failed to fetch competition data', err)
-      setError('Failed to load competition data')
+      setError(t('competition.load_error'))
     } finally {
       setLoading(false)
     }
@@ -160,7 +162,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
   if (loading) {
     return (
       <div className="competition-panel">
-        <div className="competition-loading">Loading competition data...</div>
+        <div className="competition-loading">{t('competition.loading')}</div>
       </div>
     )
   }
@@ -176,7 +178,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
   if (!activeCompetition) {
     return (
       <div className="competition-panel">
-        <div className="competition-no-active">No active competition at the moment</div>
+        <div className="competition-no-active">{t('competition.no_active')}</div>
       </div>
     )
   }
@@ -190,7 +192,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
         <div className="competition-info">
           <div className="competition-title-row">
             <h2 className="competition-title">{activeCompetition.title}</h2>
-            <span className="active-badge">Active</span>
+            <span className="active-badge">{t('competition.active')}</span>
           </div>
           {activeCompetition.subtitle && (
             <p className="competition-subtitle">{activeCompetition.subtitle}</p>
@@ -199,7 +201,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
             className="view-leaderboard-link"
             onClick={() => setIsLeaderboardOpen(true)}
           >
-            View Leaderboard
+            {t('competition.view_leaderboard')}
           </button>
         </div>
 
@@ -207,19 +209,19 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
         {currentUser && (
           <div className="competition-user-stats">
             <div className="stat-item">
-              <span className="stat-label">Rank</span>
+              <span className="stat-label">{t('competition.rank')}</span>
               <span className="stat-value rank">#{currentUser.rank}</span>
             </div>
             <div className="stat-item">
-              <span className="stat-label">Score</span>
+              <span className="stat-label">{t('competition.score')}</span>
               <span className="stat-value">{currentUser.score}</span>
             </div>
             <div className="stat-item">
-              <span className="stat-label">Volume</span>
+              <span className="stat-label">{t('competition.volume')}</span>
               <span className="stat-value">${formatVolume(currentUser.volume)}</span>
             </div>
             <div className="stat-item">
-              <span className="stat-label">PnL</span>
+              <span className="stat-label">{t('competition.pnl')}</span>
               <span className={`stat-value ${parseFloat(currentUser.pnl) >= 0 ? 'positive' : 'negative'}`}>
                 {formatPnL(currentUser.pnl)}
               </span>
@@ -230,13 +232,13 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
         {/* Right side: Time remaining + Reward pool */}
         <div className="competition-right">
           <div className="competition-time">
-            <span className="time-label">Competition Ends in</span>
+            <span className="time-label">{t('competition.ends_in')}</span>
             <span className="time-value">{timeRemaining}</span>
           </div>
 
           {activeCompetition.rewardPool && (
             <div className="competition-reward">
-              <span className="reward-label">Reward</span>
+              <span className="reward-label">{t('competition.reward')}</span>
               <span className="reward-value">{activeCompetition.rewardPool}</span>
             </div>
           )}

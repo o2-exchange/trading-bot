@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { WagmiProvider } from 'wagmi'
 import { Analytics } from '@vercel/analytics/react'
 import Dashboard from './components/Dashboard'
@@ -8,6 +9,7 @@ import { useWalletStore } from './stores/useWalletStore'
 import { ToastProvider } from './components/ToastProvider'
 
 function App() {
+  const { t } = useTranslation()
   const connectedWallet = useWalletStore((state) => state.connectedWallet)
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -33,7 +35,7 @@ function App() {
         <ToastProvider>
           <div className="app">
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-              <p>Loading...</p>
+              <p>{t('common.loading')}</p>
             </div>
           </div>
         </ToastProvider>

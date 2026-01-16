@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Trade } from '../types/trade'
 import { tradeHistoryService } from '../services/tradeHistoryService'
 import { tradingEngine } from '../services/tradingEngine'
@@ -7,6 +8,7 @@ import { Market } from '../types/market'
 import './TradeHistory.css'
 
 export default function TradeHistory() {
+  const { t } = useTranslation()
   const [trades, setTrades] = useState<Trade[]>([])
   const [markets, setMarkets] = useState<Map<string, Market>>(new Map())
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -161,29 +163,31 @@ export default function TradeHistory() {
   }
 
   const formatStatus = (status?: string): string => {
-    if (!status) return 'Unknown'
+    if (!status) return t('trade_history.unknown')
+    if (status.toLowerCase() === 'filled') return t('trade_history.filled')
+    if (status.toLowerCase() === 'failed') return t('trade_history.failed')
     return status.charAt(0).toUpperCase() + status.slice(1)
   }
 
   return (
     <div className="trade-history">
-      <h2>Trade History</h2>
+      <h2>{t('trade_history.title')}</h2>
       {trades.length === 0 ? (
-        <div className="empty-state">No trades yet</div>
+        <div className="empty-state">{t('trade_history.no_trades')}</div>
       ) : (
         <div className="trades-table-container">
         <table className="trades-table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Pair</th>
-              <th>Type</th>
-              <th>Side</th>
-              <th>Order Price</th>
-              <th>Fill Price</th>
-              <th>Filled / All</th>
-              <th>Total</th>
-              <th>Status</th>
+              <th>{t('trade_history.date')}</th>
+              <th>{t('trade_history.pair')}</th>
+              <th>{t('trade_history.type')}</th>
+              <th>{t('trade_history.side')}</th>
+              <th>{t('trade_history.order_price')}</th>
+              <th>{t('trade_history.fill_price')}</th>
+              <th>{t('trade_history.filled_all')}</th>
+              <th>{t('trade_history.total')}</th>
+              <th>{t('trade_history.status')}</th>
             </tr>
           </thead>
           <tbody>
@@ -210,7 +214,7 @@ export default function TradeHistory() {
                 <td className="total-cell">{formatTotal(trade)}</td>
                 <td>
                   <span className={`status-badge ${trade.status || (trade.success ? 'filled' : 'failed')}`}>
-                    {formatStatus(trade.status) || (trade.success ? 'Filled' : 'Failed')}
+                    {formatStatus(trade.status) || (trade.success ? t('trade_history.filled') : t('trade_history.failed'))}
                   </span>
                 </td>
               </tr>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { TradingAccountBalances, Balance } from '../types/tradingAccount'
 import { HIDE_USDT_IN_UI } from '../constants/o2Constants'
 import './Balances.css'
@@ -8,10 +9,12 @@ interface BalancesProps {
 }
 
 export default function Balances({ balances, loading }: BalancesProps) {
+  const { t } = useTranslation()
+
   if (loading) {
     return (
       <div className="balances">
-        <p>Loading balances...</p>
+        <p>{t('balances.loading')}</p>
       </div>
     )
   }
@@ -19,7 +22,7 @@ export default function Balances({ balances, loading }: BalancesProps) {
   if (!balances || balances.balances.length === 0) {
     return (
       <div className="balances">
-        <p>No balances found</p>
+        <p>{t('balances.no_balances')}</p>
       </div>
     )
   }
@@ -57,10 +60,10 @@ export default function Balances({ balances, loading }: BalancesProps) {
       <table className="balances-table">
         <thead>
           <tr>
-            <th>Asset</th>
-            <th>Available</th>
-            <th>Locked</th>
-            <th>~Value (USD)</th>
+            <th>{t('balances.asset')}</th>
+            <th>{t('balances.available')}</th>
+            <th>{t('balances.locked')}</th>
+            <th>{t('balances.value_usd')}</th>
           </tr>
         </thead>
         <tbody>
@@ -78,7 +81,7 @@ export default function Balances({ balances, loading }: BalancesProps) {
         {balances.totalValueUsd && balances.totalValueUsd > 0 && (
           <tfoot>
             <tr className="total-row">
-              <td colSpan={3}>Total</td>
+              <td colSpan={3}>{t('balances.total')}</td>
               <td className="tabular-nums value-usd">${balances.totalValueUsd.toFixed(2)}</td>
             </tr>
           </tfoot>

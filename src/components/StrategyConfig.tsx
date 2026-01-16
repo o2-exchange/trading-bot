@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Market } from '../types/market'
 import { StrategyConfigStore, StrategyConfig as StrategyConfigType, getDefaultStrategyConfig, getPresetStrategyConfig, StrategyPreset, STRATEGY_PRESET_LABELS, STRATEGY_PRESET_DESCRIPTIONS, OrderConfig, PositionSizingConfig, OrderManagementConfig, RiskManagementConfig, TimingConfig } from '../types/strategy'
 import { db } from '../services/dbService'
@@ -211,6 +212,7 @@ const migrateOldConfig = (oldConfig: any): StrategyConfigType => {
 }
 
 export default function StrategyConfig({ markets, createNewRef, importRef }: StrategyConfigProps) {
+  const { t } = useTranslation()
   const [configs, setConfigs] = useState<StrategyConfigStore[]>([])
   const [editingConfig, setEditingConfig] = useState<StrategyConfigStore | null>(null)
   const [selectedMarket, setSelectedMarket] = useState<string>('')
@@ -310,13 +312,13 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
   // Actual save logic extracted to be called after order cancellation confirmation
   const performSave = async () => {
     if (!selectedMarket) {
-      addToast('Please select a market', 'error')
+      addToast(t('strategy.select_market_error'), 'error')
       return
     }
 
     const market = markets.find((m) => m.market_id === selectedMarket)
     if (!market) {
-      addToast('Market not found', 'error')
+      addToast(t('strategy.market_not_found'), 'error')
       return
     }
 
@@ -333,10 +335,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
           (editingConfig.config.lastFillPrices?.sell?.length ?? 0) > 0
 
         if (hasHistory) {
-          const confirmed = confirm(
-            'Changing the market will permanently clear your trading history (buy/sell prices, fill data).\n\n' +
-            'This cannot be undone. Are you sure you want to continue?'
-          )
+          const confirmed = confirm(t('strategy.market_change_warning'))
           if (!confirmed) {
             return
           }
@@ -356,7 +355,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
           lastFillPrices: undefined,
           updatedAt: Date.now(),
         }
-        addToast('Market changed - trading history cleared', 'warning')
+        addToast(t('strategy.market_changed'), 'warning')
       } else {
         // Update existing config (same market)
         configToSave = {
@@ -387,13 +386,13 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
     }
 
     await loadConfigs()
-    addToast('Strategy configuration saved', 'success')
+    addToast(t('strategy.saved'), 'success')
     handleCancel()
   }
 
   const handleSave = async () => {
     if (!selectedMarket) {
-      addToast('Please select a market', 'error')
+      addToast(t('strategy.select_market_error'), 'error')
       return
     }
 
@@ -469,7 +468,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
 
     const wallet = walletService.getConnectedWallet()
     if (!wallet) {
-      addToast('Wallet not connected', 'error')
+      addToast(t('wallet.not_connected'), 'error')
       setShowCancelOrdersConfirm(false)
       setPendingAction(null)
       return
@@ -482,17 +481,17 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
       if (marketId) {
         const result = await orderService.cancelOrdersForMarket(marketId, wallet.address)
         if (result.cancelled > 0) {
-          addToast(`Cancelled ${result.cancelled} open order(s)`, 'info')
+          addToast(t('strategy.orders_cancelled', { count: result.cancelled }), 'info')
         }
         if (result.failed > 0) {
-          addToast(`Failed to cancel ${result.failed} order(s)`, 'warning')
+          addToast(t('strategy.orders_cancel_failed', { count: result.failed }), 'warning')
         }
         // Trigger refresh of OpenOrdersPanel
         window.dispatchEvent(new Event('refresh-orders'))
       }
     } catch (error) {
       console.error('Failed to cancel orders:', error)
-      addToast('Failed to cancel some orders', 'warning')
+      addToast(t('strategy.orders_cancel_error'), 'warning')
     } finally {
       setIsCancellingOrders(false)
     }
@@ -514,7 +513,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
   }
 
   const handleDelete = async (config: StrategyConfigStore) => {
-    if (confirm('Are you sure you want to delete this strategy configuration?')) {
+    if (confirm(t('strategy.delete_confirm'))) {
       // Stop trading for this market if trading is active
       if (tradingEngine.isActive()) {
         tradingEngine.stopMarketTrading(config.marketId)
@@ -531,7 +530,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
 
       await db.strategyConfigs.delete(config.id)
       await loadConfigs()
-      addToast('Strategy configuration deleted', 'success')
+      addToast(t('strategy.deleted'), 'success')
     }
   }
 
@@ -600,9 +599,9 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
     try {
       const exportData = createExportData(config)
       await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2))
-      addToast('Strategy copied to clipboard', 'success')
+      addToast(t('strategy.copied_to_clipboard'), 'success')
     } catch (error) {
-      addToast('Failed to copy to clipboard', 'error')
+      addToast(t('strategy.copy_failed'), 'error')
     }
   }
 
@@ -620,9 +619,9 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      addToast('Strategy exported', 'success')
+      addToast(t('strategy.exported'), 'success')
     } catch (error) {
-      addToast('Failed to export strategy', 'error')
+      addToast(t('strategy.export_failed'), 'error')
     }
   }
 
@@ -644,7 +643,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
       setImportJson(content)
     }
     reader.onerror = () => {
-      addToast('Failed to read file', 'error')
+      addToast(t('strategy.file_read_failed'), 'error')
     }
     reader.readAsText(file)
   }
@@ -652,12 +651,12 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
   // Process and validate import
   const handleProcessImport = () => {
     if (!importMarket) {
-      addToast('Please select a target market', 'error')
+      addToast(t('strategy.select_target_market'), 'error')
       return
     }
 
     if (!importJson.trim()) {
-      addToast('Please provide JSON data', 'error')
+      addToast(t('strategy.provide_json'), 'error')
       return
     }
 
@@ -666,7 +665,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
 
       // Validate version and required fields
       if (!data.orderConfig || !data.positionSizing || !data.orderManagement || !data.riskManagement || !data.timing) {
-        addToast('Invalid strategy format: missing required sections', 'error')
+        addToast(t('strategy.invalid_format'), 'error')
         return
       }
 
@@ -708,9 +707,9 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
       })
       setIsCreating(false)
 
-      addToast('Strategy imported - review and save', 'success')
+      addToast(t('strategy.imported'), 'success')
     } catch (error) {
-      addToast('Invalid JSON format', 'error')
+      addToast(t('strategy.invalid_json'), 'error')
     }
   }
 
@@ -723,7 +722,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
         <div className="config-modal-overlay" onClick={handleCancel}>
           <div className="config-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="config-modal-header">
-              <h2>{editingConfig ? 'Edit Strategy' : 'Create New Strategy'}</h2>
+              <h2>{editingConfig ? t('strategy.edit_strategy') : t('strategy.create_new')}</h2>
               <div className="config-modal-header-actions">
                 {editingConfig && (
                   <>
@@ -731,17 +730,17 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                       type="button"
                       onClick={() => handleCopyToClipboard(editingConfig)}
                       className="btn-export"
-                      title="Copy strategy JSON to clipboard"
+                      title={t('strategy.copy_tooltip')}
                     >
-                      Copy
+                      {t('strategy.copy')}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleExportAsFile(editingConfig)}
                       className="btn-export"
-                      title="Export as JSON file"
+                      title={t('strategy.export_tooltip')}
                     >
-                      Export
+                      {t('strategy.export')}
                     </button>
                   </>
                 )}
@@ -799,7 +798,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                 />
               ) : (
                 <div className="form-group">
-                  <label>Market *</label>
+                  <label>{t('strategy.market')} *</label>
                   <select
                     value={selectedMarket}
                     onChange={(e) => {
@@ -821,7 +820,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                     required
                     style={{ width: '100%', padding: '8px 12px', marginTop: '8px' }}
                   >
-                    <option value="">Select a market</option>
+                    <option value="">{t('strategy.select_market')}</option>
                     {markets.map((market) => (
                       <option key={market.market_id} value={market.market_id}>
                         {market.base.symbol}/{market.quote.symbol}
@@ -829,7 +828,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                     ))}
                   </select>
                   <small style={{ display: 'block', marginTop: '8px', color: 'var(--muted-foreground)' }}>
-                    Please select a market to continue
+                    {t('strategy.select_market_hint')}
                   </small>
                 </div>
               )}
@@ -841,13 +840,13 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
       <div className="configs-list">
         {configs.length === 0 ? (
           <div className="empty-state">
-            <p>No strategy configurations</p>
+            <p>{t('strategy.no_configs')}</p>
             <div className="empty-state-actions">
               <button onClick={handleCreateNew} className="btn btn-primary">
-                Create Strategy
+                {t('strategy.create_strategy')}
               </button>
               <button onClick={handleOpenImport} className="btn btn-secondary">
-                Import
+                {t('strategy.import')}
               </button>
             </div>
           </div>
@@ -870,7 +869,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                       )}
                     </div>
                     <span className={`status-badge ${config.isActive ? 'active' : 'inactive'}`}>
-                      {config.isActive ? 'Active' : 'Inactive'}
+                      {config.isActive ? t('strategy.active') : t('strategy.inactive')}
                     </span>
                   </div>
                   
@@ -921,17 +920,17 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                   
                   <div className="config-card-actions">
                     <button type="button" onClick={() => handleEdit(config)} className="btn-action btn-edit">
-                      Edit
+                      {t('strategy.edit')}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleToggleActive(config)}
                       className={`btn-action ${config.isActive ? 'btn-deactivate' : 'btn-activate'}`}
                     >
-                      {config.isActive ? 'Deactivate' : 'Activate'}
+                      {config.isActive ? t('strategy.deactivate') : t('strategy.activate')}
                     </button>
                     <button type="button" onClick={() => handleDelete(config)} className="btn-action btn-delete">
-                      Delete
+                      {t('strategy.delete')}
                     </button>
                   </div>
                 </div>
@@ -946,19 +945,19 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
         <div className="config-modal-overlay" onClick={() => setShowImportModal(false)}>
           <div className="config-modal-content import-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="config-modal-header">
-              <h2>Import Strategy</h2>
+              <h2>{t('strategy.import_strategy')}</h2>
               <button className="config-modal-close" onClick={() => setShowImportModal(false)}>×</button>
             </div>
             <div className="config-modal-body">
               <div className="form-group">
-                <label>Target Market *</label>
+                <label>{t('strategy.target_market')} *</label>
                 <div className="select-wrapper">
                   <select
                     value={importMarket}
                     onChange={(e) => setImportMarket(e.target.value)}
                     required
                   >
-                    <option value="">Select a market</option>
+                    <option value="">{t('strategy.select_market')}</option>
                     {markets.map((market) => (
                       <option key={market.market_id} value={market.market_id}>
                         {market.base.symbol}/{market.quote.symbol}
@@ -966,11 +965,11 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                     ))}
                   </select>
                 </div>
-                <small>The imported strategy will be applied to this market</small>
+                <small>{t('strategy.import_market_hint')}</small>
               </div>
 
               <div className="import-divider">
-                <span>Upload file</span>
+                <span>{t('strategy.upload_file')}</span>
               </div>
 
               <div className="form-group">
@@ -984,7 +983,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
               </div>
 
               <div className="import-divider">
-                <span>Or paste JSON</span>
+                <span>{t('strategy.or_paste_json')}</span>
               </div>
 
               <div className="form-group">
@@ -1001,10 +1000,10 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                 <div></div>
                 <div className="form-actions-right">
                   <button type="button" onClick={() => setShowImportModal(false)} className="btn btn-secondary">
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button type="button" onClick={handleProcessImport} className="btn btn-primary">
-                    Import
+                    {t('strategy.import')}
                   </button>
                 </div>
               </div>
@@ -1018,28 +1017,28 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
         <div className="config-modal-overlay" onClick={handleCancelOrdersDialogClose}>
           <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="confirm-dialog-header">
-              <h3>{pendingAction?.type === 'save' ? 'Save Strategy' : 'Deactivate Strategy'}</h3>
+              <h3>{pendingAction?.type === 'save' ? t('strategy.save_strategy') : t('strategy.deactivate_strategy')}</h3>
             </div>
             <div className="confirm-dialog-body">
               {isCancellingOrders ? (
-                <p>Cancelling open orders...</p>
+                <p>{t('strategy.cancelling_orders')}</p>
               ) : (
                 <>
-                  <p>This market has open orders. Proceeding will:</p>
+                  <p>{t('strategy.open_orders_warning')}</p>
                   <ul>
-                    <li>Cancel all open orders for this market</li>
-                    <li>{pendingAction?.type === 'save' ? 'Save your strategy changes' : 'Deactivate this strategy'}</li>
+                    <li>{t('strategy.will_cancel_orders')}</li>
+                    <li>{pendingAction?.type === 'save' ? t('strategy.will_save_changes') : t('strategy.will_deactivate')}</li>
                   </ul>
-                  <p>Are you sure you want to proceed?</p>
+                  <p>{t('strategy.confirm_proceed')}</p>
                 </>
               )}
             </div>
             <div className="confirm-dialog-actions">
               <button onClick={handleCancelOrdersDialogClose} className="cancel-btn" disabled={isCancellingOrders}>
-                Cancel
+                {t('common.cancel')}
               </button>
               <button onClick={handleConfirmCancelOrders} className="confirm-btn" disabled={isCancellingOrders}>
-                {isCancellingOrders ? 'Processing...' : 'Confirm'}
+                {isCancellingOrders ? t('common.processing') : t('common.confirm')}
               </button>
             </div>
           </div>
@@ -1074,6 +1073,8 @@ function StrategyConfigForm({
   onCancel,
   onReset,
 }: StrategyConfigFormProps) {
+  const { t } = useTranslation()
+
   const updateConfig = (updates: Partial<StrategyConfigType>) => {
     onConfigChange({
       ...config,
@@ -1145,10 +1146,10 @@ function StrategyConfigForm({
       {/* Row 1: Market & Name */}
       <div className="form-row">
         <div className="form-field flex-2">
-          <label>Market</label>
+          <label>{t('strategy.market')}</label>
           <div className="select-wrapper">
             <select value={selectedMarket} onChange={(e) => onMarketChange(e.target.value)} required>
-              <option value="">Select market</option>
+              <option value="">{t('strategy.select_market')}</option>
               {markets.map((market) => (
                 <option key={market.market_id} value={market.market_id}>
                   {market.base.symbol}/{market.quote.symbol}
@@ -1158,12 +1159,12 @@ function StrategyConfigForm({
           </div>
         </div>
         <div className="form-field flex-2">
-          <label>Strategy Name</label>
+          <label>{t('strategy.strategy_name')}</label>
           <input
             type="text"
             value={config.name || ''}
             onChange={(e) => updateConfig({ name: e.target.value })}
-            placeholder="Optional"
+            placeholder={t('strategy.optional')}
           />
         </div>
       </div>
@@ -1176,8 +1177,8 @@ function StrategyConfigForm({
             className={`preset-tab ${preset === presetKey ? 'active' : ''}`}
             onClick={() => onPresetChange(presetKey)}
           >
-            <div className="preset-tab-name">{STRATEGY_PRESET_LABELS[presetKey]}</div>
-            <div className="preset-tab-desc">{STRATEGY_PRESET_DESCRIPTIONS[presetKey]}</div>
+            <div className="preset-tab-name">{t(`strategy.preset_${presetKey}`)}</div>
+            <div className="preset-tab-desc">{t(`strategy.preset_${presetKey}_desc`)}</div>
           </div>
         ))}
       </div>
@@ -1188,9 +1189,9 @@ function StrategyConfigForm({
       <div className="form-row">
         <div className="form-field">
           <label className="label-with-tooltip">
-            Order Type <Tooltip text={TOOLTIPS.orderType} position="left" />
+            {t('strategy.order_type')} <Tooltip text={TOOLTIPS.orderType} position="left" />
             {config.orderManagement.onlySellAboveBuyPrice && (
-              <span className="field-locked-indicator" title="Forced to Limit when 'Sell Above Buy' is enabled">🔒</span>
+              <span className="field-locked-indicator" title={t('strategy.limit_locked_hint')}>🔒</span>
             )}
           </label>
           <div className="select-wrapper">
@@ -1200,31 +1201,31 @@ function StrategyConfigForm({
               disabled={config.orderManagement.onlySellAboveBuyPrice}
               className={config.orderManagement.onlySellAboveBuyPrice ? 'disabled-locked' : ''}
             >
-              <option value="Market">Market</option>
-              <option value="Spot">Limit</option>
+              <option value="Market">{t('strategy.market_order')}</option>
+              <option value="Spot">{t('strategy.limit_order')}</option>
             </select>
           </div>
           {config.orderManagement.onlySellAboveBuyPrice && (
-            <small className="field-hint">Limit required for sell above buy</small>
+            <small className="field-hint">{t('strategy.limit_required')}</small>
           )}
         </div>
         <div className="form-field">
-          <label className="label-with-tooltip">Price Mode <Tooltip text={TOOLTIPS.priceMode} /></label>
+          <label className="label-with-tooltip">{t('strategy.price_mode')} <Tooltip text={TOOLTIPS.priceMode} /></label>
           <div className="select-wrapper">
             <select value={config.orderConfig.priceMode} onChange={(e) => updateOrderConfig({ priceMode: e.target.value as any })}>
-              <option value="offsetFromMid">Mid Price</option>
-              <option value="offsetFromBestBid">Best Bid</option>
-              <option value="offsetFromBestAsk">Best Ask</option>
-              <option value="market">Market</option>
+              <option value="offsetFromMid">{t('strategy.mid_price')}</option>
+              <option value="offsetFromBestBid">{t('strategy.best_bid')}</option>
+              <option value="offsetFromBestAsk">{t('strategy.best_ask')}</option>
+              <option value="market">{t('strategy.market_price')}</option>
             </select>
           </div>
         </div>
         <div className="form-field">
-          <label className="label-with-tooltip">Side <Tooltip text={TOOLTIPS.side} position="right" /></label>
+          <label className="label-with-tooltip">{t('strategy.side')} <Tooltip text={TOOLTIPS.side} position="right" /></label>
           <div className="btn-group">
-            <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Buy' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Buy' })}>Buy</button>
-            <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Sell' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Sell' })}>Sell</button>
-            <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Both' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Both' })}>Both</button>
+            <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Buy' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Buy' })}>{t('strategy.buy')}</button>
+            <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Sell' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Sell' })}>{t('strategy.sell')}</button>
+            <button type="button" className={`btn-toggle ${config.orderConfig.side === 'Both' ? 'active' : ''}`} onClick={() => updateOrderConfig({ side: 'Both' })}>{t('strategy.both')}</button>
           </div>
         </div>
       </div>
@@ -1232,7 +1233,7 @@ function StrategyConfigForm({
       {/* Row 3: Price Offset, Max Spread */}
       <div className="form-row">
         <div className="form-field">
-          <label className="label-with-tooltip">Price Offset % <Tooltip text={TOOLTIPS.priceOffsetPercent} position="left" /></label>
+          <label className="label-with-tooltip">{t('strategy.price_offset')} <Tooltip text={TOOLTIPS.priceOffsetPercent} position="left" /></label>
           <NumberInput
             value={config.orderConfig.priceOffsetPercent}
             onChange={(value) => updateOrderConfig({ priceOffsetPercent: value })}
@@ -1242,7 +1243,7 @@ function StrategyConfigForm({
           />
         </div>
         <div className="form-field">
-          <label className="label-with-tooltip">Max Spread % <Tooltip text={TOOLTIPS.maxSpreadPercent} /></label>
+          <label className="label-with-tooltip">{t('strategy.max_spread')} <Tooltip text={TOOLTIPS.maxSpreadPercent} /></label>
           <NumberInput
             value={config.orderConfig.maxSpreadPercent}
             onChange={(value) => updateOrderConfig({ maxSpreadPercent: value })}
@@ -1252,7 +1253,7 @@ function StrategyConfigForm({
           />
         </div>
         <div className="form-field">
-          <label className="label-with-tooltip">Max Open Orders <Tooltip text={TOOLTIPS.maxOpenOrders} position="right" /></label>
+          <label className="label-with-tooltip">{t('strategy.max_open_orders')} <Tooltip text={TOOLTIPS.maxOpenOrders} position="right" /></label>
           <NumberInput
             value={config.orderManagement.maxOpenOrders}
             onChange={(value) => updateOrderManagement({ maxOpenOrders: value })}
@@ -1266,19 +1267,19 @@ function StrategyConfigForm({
       <div className="form-divider" />
 
       {/* Position Sizing */}
-      <div className="form-section-label">Position Sizing</div>
+      <div className="form-section-label">{t('strategy.position_sizing')}</div>
       <div className="form-row">
         <div className="form-field">
-          <label className="label-with-tooltip">Size Mode <Tooltip text={TOOLTIPS.sizeMode} position="left" /></label>
+          <label className="label-with-tooltip">{t('strategy.size_mode')} <Tooltip text={TOOLTIPS.sizeMode} position="left" /></label>
           <div className="btn-group">
-            <button type="button" className={`btn-toggle ${config.positionSizing.sizeMode === 'percentageOfBalance' ? 'active' : ''}`} onClick={() => updatePositionSizing({ sizeMode: 'percentageOfBalance' })}>% Balance</button>
-            <button type="button" className={`btn-toggle ${config.positionSizing.sizeMode === 'fixedUsd' ? 'active' : ''}`} onClick={() => updatePositionSizing({ sizeMode: 'fixedUsd' })}>Fixed USD</button>
+            <button type="button" className={`btn-toggle ${config.positionSizing.sizeMode === 'percentageOfBalance' ? 'active' : ''}`} onClick={() => updatePositionSizing({ sizeMode: 'percentageOfBalance' })}>{t('strategy.percent_balance')}</button>
+            <button type="button" className={`btn-toggle ${config.positionSizing.sizeMode === 'fixedUsd' ? 'active' : ''}`} onClick={() => updatePositionSizing({ sizeMode: 'fixedUsd' })}>{t('strategy.fixed_usd')}</button>
           </div>
         </div>
         {config.positionSizing.sizeMode === 'percentageOfBalance' ? (
           <>
             <div className="form-field">
-              <label className="label-with-tooltip">{markets.find(m => m.market_id === selectedMarket)?.base.symbol || 'Base'} Balance % <Tooltip text={TOOLTIPS.baseBalancePercent} /></label>
+              <label className="label-with-tooltip">{markets.find(m => m.market_id === selectedMarket)?.base.symbol || t('strategy.base')} {t('strategy.balance_percent')} <Tooltip text={TOOLTIPS.baseBalancePercent} /></label>
               <NumberInput
                 value={config.positionSizing.baseBalancePercentage ?? config.positionSizing.balancePercentage}
                 onChange={(value) => updatePositionSizing({ baseBalancePercentage: value })}
@@ -1288,7 +1289,7 @@ function StrategyConfigForm({
               />
             </div>
             <div className="form-field">
-              <label className="label-with-tooltip">{markets.find(m => m.market_id === selectedMarket)?.quote.symbol || 'Quote'} Balance % <Tooltip text={TOOLTIPS.quoteBalancePercent} position="right" /></label>
+              <label className="label-with-tooltip">{markets.find(m => m.market_id === selectedMarket)?.quote.symbol || t('strategy.quote')} {t('strategy.balance_percent')} <Tooltip text={TOOLTIPS.quoteBalancePercent} position="right" /></label>
               <NumberInput
                 value={config.positionSizing.quoteBalancePercentage ?? config.positionSizing.balancePercentage}
                 onChange={(value) => updatePositionSizing({ quoteBalancePercentage: value })}
@@ -1300,7 +1301,7 @@ function StrategyConfigForm({
           </>
         ) : (
           <div className="form-field flex-2">
-            <label className="label-with-tooltip">Fixed Amount (USD) <Tooltip text={TOOLTIPS.fixedUsdAmount} /></label>
+            <label className="label-with-tooltip">{t('strategy.fixed_amount_usd')} <Tooltip text={TOOLTIPS.fixedUsdAmount} /></label>
             <NumberInput
               value={config.positionSizing.fixedUsdAmount || 0}
               onChange={(value) => updatePositionSizing({ fixedUsdAmount: value })}
@@ -1313,7 +1314,7 @@ function StrategyConfigForm({
 
       <div className="form-row">
         <div className="form-field">
-          <label className="label-with-tooltip">Min Order (USD) <Tooltip text={TOOLTIPS.minOrderSizeUsd} position="left" /></label>
+          <label className="label-with-tooltip">{t('strategy.min_order_usd')} <Tooltip text={TOOLTIPS.minOrderSizeUsd} position="left" /></label>
           <NumberInput
             value={config.positionSizing.minOrderSizeUsd}
             onChange={(value) => updatePositionSizing({ minOrderSizeUsd: value })}
@@ -1322,11 +1323,11 @@ function StrategyConfigForm({
           />
         </div>
         <div className="form-field">
-          <label className="label-with-tooltip">Max Order (USD) <Tooltip text={TOOLTIPS.maxOrderSizeUsd} /></label>
-          <input type="number" min="0" step="0.01" value={config.positionSizing.maxOrderSizeUsd || ''} placeholder="No limit" onChange={(e) => updatePositionSizing({ maxOrderSizeUsd: e.target.value ? parseFloat(e.target.value) : undefined })} />
+          <label className="label-with-tooltip">{t('strategy.max_order_usd')} <Tooltip text={TOOLTIPS.maxOrderSizeUsd} /></label>
+          <input type="number" min="0" step="0.01" value={config.positionSizing.maxOrderSizeUsd || ''} placeholder={t('strategy.no_limit')} onChange={(e) => updatePositionSizing({ maxOrderSizeUsd: e.target.value ? parseFloat(e.target.value) : undefined })} />
         </div>
         <div className="form-field">
-          <label className="label-with-tooltip">Cycle Interval (ms) <Tooltip text={TOOLTIPS.cycleInterval} position="right" /></label>
+          <label className="label-with-tooltip">{t('strategy.cycle_interval')} <Tooltip text={TOOLTIPS.cycleInterval} position="right" /></label>
           <div className="inline-inputs">
             <NumberInput
               value={config.timing.cycleIntervalMinMs}
@@ -1350,14 +1351,14 @@ function StrategyConfigForm({
       <div className="form-divider" />
 
       {/* Profit & Risk Settings */}
-      <div className="form-section-label">Profit & Risk</div>
+      <div className="form-section-label">{t('strategy.profit_risk')}</div>
       <div className="form-row checkboxes">
         <label className="checkbox-inline">
           <input type="checkbox" checked={config.orderManagement.onlySellAboveBuyPrice} onChange={(e) => updateOrderManagement({ onlySellAboveBuyPrice: e.target.checked })} />
-          <span className="label-with-tooltip">Sell Above Buy <Tooltip text={TOOLTIPS.onlySellAboveBuyPrice} position="left" /></span>
+          <span className="label-with-tooltip">{t('strategy.sell_above_buy')} <Tooltip text={TOOLTIPS.onlySellAboveBuyPrice} position="left" /></span>
         </label>
         <div className="form-field compact">
-          <label className="label-with-tooltip">Take Profit % <Tooltip text={TOOLTIPS.takeProfitPercent} /></label>
+          <label className="label-with-tooltip">{t('strategy.take_profit')} <Tooltip text={TOOLTIPS.takeProfitPercent} /></label>
           <NumberInput
             value={config.riskManagement?.takeProfitPercent ?? 0.02}
             onChange={(value) => updateRiskManagement({ takeProfitPercent: value })}
@@ -1371,7 +1372,7 @@ function StrategyConfigForm({
       <div className="form-row checkboxes">
         <label className="checkbox-inline">
           <input type="checkbox" checked={config.riskManagement?.stopLossEnabled ?? false} onChange={(e) => updateRiskManagement({ stopLossEnabled: e.target.checked })} />
-          <span className="label-with-tooltip">Stop Loss <Tooltip text={TOOLTIPS.stopLoss} position="left" /></span>
+          <span className="label-with-tooltip">{t('strategy.stop_loss')} <Tooltip text={TOOLTIPS.stopLoss} position="left" /></span>
         </label>
         {config.riskManagement?.stopLossEnabled && (
           <div className="form-field compact">
@@ -1387,7 +1388,7 @@ function StrategyConfigForm({
         )}
         <label className="checkbox-inline">
           <input type="checkbox" checked={config.riskManagement?.orderTimeoutEnabled ?? false} onChange={(e) => updateRiskManagement({ orderTimeoutEnabled: e.target.checked })} />
-          <span className="label-with-tooltip">Order Timeout <Tooltip text={TOOLTIPS.orderTimeout} /></span>
+          <span className="label-with-tooltip">{t('strategy.order_timeout')} <Tooltip text={TOOLTIPS.orderTimeout} /></span>
         </label>
         {config.riskManagement?.orderTimeoutEnabled && (
           <div className="form-field compact">
@@ -1399,7 +1400,7 @@ function StrategyConfigForm({
               step={1}
               isInteger
             />
-            <span className="suffix">min</span>
+            <span className="suffix">{t('strategy.min')}</span>
           </div>
         )}
       </div>
@@ -1407,7 +1408,7 @@ function StrategyConfigForm({
       <div className="form-row checkboxes">
         <label className="checkbox-inline">
           <input type="checkbox" checked={config.riskManagement?.maxSessionLossEnabled ?? false} onChange={(e) => updateRiskManagement({ maxSessionLossEnabled: e.target.checked })} />
-          <span className="label-with-tooltip">Max Session Loss <Tooltip text={TOOLTIPS.maxSessionLoss} position="left" /></span>
+          <span className="label-with-tooltip">{t('strategy.max_session_loss')} <Tooltip text={TOOLTIPS.maxSessionLoss} position="left" /></span>
         </label>
         {config.riskManagement?.maxSessionLossEnabled && (
           <div className="form-field compact">
@@ -1424,10 +1425,10 @@ function StrategyConfigForm({
 
       {/* Actions */}
       <div className="form-actions compact">
-        <button type="button" onClick={onReset} className="btn btn-text">Reset</button>
+        <button type="button" onClick={onReset} className="btn btn-text">{t('strategy.reset')}</button>
         <div className="form-actions-right">
-          <button type="button" onClick={onCancel} className="btn btn-secondary">Cancel</button>
-          <button type="button" onClick={onSave} className="btn btn-primary">Save</button>
+          <button type="button" onClick={onCancel} className="btn btn-secondary">{t('common.cancel')}</button>
+          <button type="button" onClick={onSave} className="btn btn-primary">{t('strategy.save')}</button>
         </div>
       </div>
     </div>

@@ -19,7 +19,8 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@i18n": ["./src/i18n.ts"]
     }
   },
   "include": ["src"],

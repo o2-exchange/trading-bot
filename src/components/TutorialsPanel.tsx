@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plyr } from 'plyr-react'
 import 'plyr-react/plyr.css'
 import './TutorialsPanel.css'
@@ -37,6 +38,7 @@ const plyrOptions: Plyr.Options = {
 }
 
 export default function TutorialsPanel() {
+  const { t } = useTranslation()
   const [selectedTutorial, setSelectedTutorial] = useState<Tutorial | null>(null)
   const [isPlayerReady, setIsPlayerReady] = useState(false)
 
@@ -64,7 +66,7 @@ export default function TutorialsPanel() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7"/>
           </svg>
-          Back to Tutorials
+          {t('tutorials.back_to_tutorials')}
         </button>
 
         <div className="tutorial-detail">
@@ -103,38 +105,38 @@ export default function TutorialsPanel() {
             </div>
 
             <div className="quick-start-section">
-              <h3>Quick Start Guide</h3>
+              <h3>{t('tutorials.quick_start_title')}</h3>
               <ol className="quick-start-steps">
                 <li>
-                  <span className="step-title">Connect your wallet</span>
-                  <span className="step-desc">Click "Connect Wallet" and select your preferred wallet</span>
+                  <span className="step-title">{t('tutorials.step1_title')}</span>
+                  <span className="step-desc">{t('tutorials.step1_desc')}</span>
                 </li>
                 <li>
-                  <span className="step-title">Ensure sufficient balance</span>
-                  <span className="step-desc">Make sure you have funds deposited on o2.app</span>
+                  <span className="step-title">{t('tutorials.step2_title')}</span>
+                  <span className="step-desc">{t('tutorials.step2_desc')}</span>
                 </li>
                 <li>
-                  <span className="step-title">Create or import a strategy</span>
-                  <span className="step-desc">Use Strategy Configuration to create new or import existing strategies</span>
+                  <span className="step-title">{t('tutorials.step3_title')}</span>
+                  <span className="step-desc">{t('tutorials.step3_desc')}</span>
                 </li>
                 <li>
-                  <span className="step-title">Pick your market pairs</span>
-                  <span className="step-desc">Select from available markets in your strategy settings</span>
+                  <span className="step-title">{t('tutorials.step4_title')}</span>
+                  <span className="step-desc">{t('tutorials.step4_desc')}</span>
                 </li>
                 <li>
-                  <span className="step-title">Choose a preset or go custom</span>
-                  <span className="step-desc">Simple, Volume Max, Profit-Taking presets available, or customize all variables</span>
+                  <span className="step-title">{t('tutorials.step5_title')}</span>
+                  <span className="step-desc">{t('tutorials.step5_desc')}</span>
                 </li>
                 <li>
-                  <span className="step-title">Start Trading!</span>
-                  <span className="step-desc">Hit Save, then click Start Trading to begin</span>
+                  <span className="step-title">{t('tutorials.step6_title')}</span>
+                  <span className="step-desc">{t('tutorials.step6_desc')}</span>
                 </li>
               </ol>
               <p className="quick-start-note">
-                Once live, you can pause, resume, or launch new sessions anytime.
+                {t('tutorials.quick_start_note')}
               </p>
               <p className="experimental-warning">
-                Note: This app is highly experimental. Trade responsibly.
+                {t('tutorials.experimental_warning')}
               </p>
             </div>
           </div>
@@ -147,8 +149,8 @@ export default function TutorialsPanel() {
   return (
     <div className="tutorials-panel">
       <div className="tutorials-header">
-        <h2>Tutorials</h2>
-        <p className="tutorials-subtitle">Learn how to use the o2 Trading Bot effectively</p>
+        <h2>{t('tutorials.title')}</h2>
+        <p className="tutorials-subtitle">{t('tutorials.subtitle')}</p>
       </div>
 
       <div className="tutorials-grid">

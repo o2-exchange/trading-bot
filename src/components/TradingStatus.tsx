@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { tradingEngine } from '../services/tradingEngine'
 
 interface TradingStatusProps {
@@ -12,6 +13,7 @@ interface StatusMessage {
 }
 
 export default function TradingStatus({ isTrading }: TradingStatusProps) {
+  const { t } = useTranslation()
   const [statusMessages, setStatusMessages] = useState<StatusMessage[]>([])
   const [tradeCycles, setTradeCycles] = useState(0)
 
@@ -48,16 +50,16 @@ export default function TradingStatus({ isTrading }: TradingStatusProps) {
 
   return (
     <div className="trading-status">
-      <h3>Trading Status</h3>
+      <h3>{t('trading_status.title')}</h3>
       <div className="status-info">
         <p>
-          Status: <span className="status-active">Active</span>
+          {t('trading_status.status')}: <span className="status-active">{t('trading_status.active')}</span>
         </p>
-        <p>Trade Cycles: {tradeCycles}</p>
+        <p>{t('trading_status.trade_cycles')}: {tradeCycles}</p>
       </div>
       {statusMessages.length > 0 && (
         <div className="status-messages">
-          <h4>Recent Activity</h4>
+          <h4>{t('trading_status.recent_activity')}</h4>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {statusMessages.map((msg, idx) => (
               <li
