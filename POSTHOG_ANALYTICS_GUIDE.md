@@ -697,5 +697,5 @@ GROUP BY wallet_type
 5. **Chain Identification**: `is_evm` boolean distinguishes EVM chains (Ethereum, etc.) from Fuel blockchain users.
 
 6. **Wallet Types**: Common values for `wallet_type`:
-   - EVM: `MetaMask`, `Rabby`, `Phantom`, `WalletConnect`
+   - EVM: `MetaMask`, `Rabby`, `Phantom`, `WalletConnect`, `OKX`
    - Fuel: `fuel`, `fuelet`, `bako-safe`
