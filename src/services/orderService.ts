@@ -96,13 +96,8 @@ class OrderService {
     // Persist nonce to database with retry logic so next order uses correct nonce
     // IMPORTANT: We await this to ensure nonce is persisted before returning
     // This prevents nonce desync on browser crash/restart
+    // NOTE: We reuse the session object from above to avoid another getActiveSession call
     const persistNonce = async (retries = 3) => {
-      const session = await sessionService.getActiveSession(normalizedAddress)
-      if (!session) {
-        console.warn('[OrderService] No active session found for nonce persistence')
-        return
-      }
-
       for (let i = 1; i <= retries; i++) {
         try {
           await tradingAccountService.updateNonce(

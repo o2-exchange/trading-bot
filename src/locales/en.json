@@ -530,16 +530,25 @@
     "volume": "Volume",
     "pnl": "PnL",
     "ends_in": "Competition Ends in",
-    "reward": "Reward"
+    "reward": "Reward",
+    "potential_reward": "Reward"
   },
   "leaderboard": {
     "title": "Leaderboard",
     "reward_pool": "Reward Pool:",
     "rank": "Rank",
+    "prize": "Prize",
     "trader": "Trader",
     "score": "Score",
     "volume": "Volume",
-    "pnl": "PnL"
+    "volume_24h": "24h Vol",
+    "pnl": "PnL",
+    "lottery": "Lottery Pool",
+    "lottery_pool_suffix": "pool",
+    "lottery_winners": "winners",
+    "lottery_each": "each",
+    "lottery_eligible": "Eligible",
+    "lottery_with": "with"
   },
   "market": {
     "market_id": "Market ID",

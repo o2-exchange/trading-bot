@@ -54,10 +54,11 @@ class OrderFulfillmentPolling {
                 })
               }
               
-              // Update config in database
+              // Update config in database with incremented version
               await db.strategyConfigs.update(marketId, {
                 config: updatedConfig,
                 updatedAt: Date.now(),
+                version: (storedConfig.version ?? 0) + 1,
               })
               
               console.log(`[OrderFulfillmentPolling] Updated fill prices for market ${marketId}`, {
@@ -67,7 +68,10 @@ class OrderFulfillmentPolling {
 
               // Immediately place sell orders for buy fills (only when trading is active)
               const normalizedAddress = ownerAddress.toLowerCase()
-              const session = await sessionService.getActiveSession(normalizedAddress)
+              // Use skipValidation=true since this is in a hot polling path and session
+              // is already validated when trading starts. If session is invalid, order
+              // placement will fail gracefully.
+              const session = await sessionService.getActiveSession(normalizedAddress, true)
               if (session && tradingEngine.isActive()) {
                 for (const [orderId, { order }] of fills) {
                   // Check if this is a buy order

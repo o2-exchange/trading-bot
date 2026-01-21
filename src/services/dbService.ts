@@ -81,6 +81,19 @@ export class O2TradingBotDB extends Dexie {
       tradingSessions: 'id, ownerAddress, marketId, status, createdAt',
       processedFills: 'orderId, marketId, updatedAt',
     })
+    // Version 4: Add compound indexes for faster order queries
+    this.version(4).stores({
+      sessions: 'id, tradeAccountId, ownerAddress, createdAt',
+      sessionKeys: 'id, createdAt',
+      markets: 'market_id, contract_id',
+      trades: '++id, timestamp, marketId, orderId, sessionId, [marketId+status]',
+      orders: 'order_id, market_id, status, createdAt, [market_id+status], [market_id+created_at]',
+      strategyConfigs: 'id, marketId, strategyType',
+      tradingAccounts: 'id, ownerAddress',
+      settings: 'id',
+      tradingSessions: 'id, ownerAddress, marketId, status, createdAt',
+      processedFills: 'orderId, marketId, updatedAt',
+    })
   }
 }
 

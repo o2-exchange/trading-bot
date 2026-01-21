@@ -268,6 +268,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
           await db.strategyConfigs.update(config.id, {
             config: migratedConfig,
             updatedAt: Date.now(),
+            version: (config.version ?? 0) + 1,
           })
           return {
             ...config,
@@ -375,6 +376,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
       isActive: editingConfig?.isActive ?? true,
       createdAt: editingConfig?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
+      version: (editingConfig?.version ?? 0) + 1,
     }
 
     await db.strategyConfigs.put(configStore)
@@ -423,6 +425,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
     await db.strategyConfigs.update(config.id, {
       isActive: !config.isActive,
       updatedAt: Date.now(),
+      version: (config.version ?? 0) + 1,
     })
 
     // Update trading engine if it's active

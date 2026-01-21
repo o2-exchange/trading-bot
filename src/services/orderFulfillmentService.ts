@@ -418,11 +418,12 @@ class OrderFulfillmentService {
       const filledQuantityScaled = new Decimal(filledBuyOrder.filled_quantity || '0')
       const filledQuantityHuman = filledQuantityScaled.div(10 ** market.base.decimals)
 
-      // Wait for balance to reflect the fill (with 1.5s timeout)
+      // Wait for balance to reflect the fill (with 1.2s timeout)
       // This handles the race condition where balance API hasn't updated yet after buy fill
+      // Using 1200ms/400ms as balanced tradeoff: 3 polls max, faster than original 6 polls
       const expectedMinBalance = filledQuantityHuman
-      const maxWaitMs = 1500 // 1.5 seconds max
-      const pollIntervalMs = 250
+      const maxWaitMs = 1200 // 1.2 second max (reduced from 1.5s)
+      const pollIntervalMs = 400 // 400ms intervals (increased from 250ms)
 
       let balances: { base: { unlocked: string }; quote: { unlocked: string } } | null = null
       let baseBalanceHuman = new Decimal(0)

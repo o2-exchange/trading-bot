@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { LeaderboardResponse, LeaderboardItem } from '../types/competition'
+import { LeaderboardResponse, LeaderboardItem, SpecialPosition } from '../types/competition'
 import './LeaderboardModal.css'
 
 interface LeaderboardModalProps {
@@ -74,6 +74,16 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
 
   const currentUserTraderId = leaderboardData?.currentUser?.traderId?.toLowerCase()
 
+  const getSpecialClass = (rank: string): string => {
+    const special = leaderboardData?.specialPositions?.[rank]
+    if (special) return `special-${special.color}`
+    return ''
+  }
+
+  const getSpecialPosition = (rank: string): SpecialPosition | undefined => {
+    return leaderboardData?.specialPositions?.[rank]
+  }
+
   return (
     <div className="leaderboard-modal-overlay" onClick={onClose}>
       <div className="leaderboard-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -87,7 +97,22 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
         {leaderboardData?.rewardPool && (
           <div className="leaderboard-reward-info">
             <span className="reward-label">{t('leaderboard.reward_pool')}</span>
-            <span className="reward-value">{leaderboardData.rewardPool}</span>
+            <span className="reward-value">${leaderboardData.rewardPool}</span>
+          </div>
+        )}
+
+        {leaderboardData?.lottery && (
+          <div className="leaderboard-lottery-info">
+            <span className="lottery-label">{t('leaderboard.lottery')}</span>
+            <span className="lottery-value">${leaderboardData.lottery.potSize}</span>
+            <span className="lottery-separator">·</span>
+            <span className="lottery-details">
+              {leaderboardData.lottery.winners} {t('leaderboard.lottery_winners')} × ${leaderboardData.lottery.prize}
+            </span>
+            <span className="lottery-separator">·</span>
+            <span className="lottery-requirement">
+              {t('leaderboard.lottery_eligible')}: #{leaderboardData.lottery.minRank}+ {t('leaderboard.lottery_with')} {leaderboardData.lottery.minScore}+ {t('leaderboard.score').toLowerCase()}
+            </span>
           </div>
         )}
 
@@ -96,26 +121,42 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
             <thead>
               <tr>
                 <th>{t('leaderboard.rank')}</th>
+                <th>{t('leaderboard.prize')}</th>
                 <th>{t('leaderboard.trader')}</th>
                 <th>{t('leaderboard.score')}</th>
                 <th>{t('leaderboard.volume')}</th>
+                <th>{t('leaderboard.volume_24h')}</th>
                 <th>{t('leaderboard.pnl')}</th>
               </tr>
             </thead>
             <tbody>
               {leaderboardData?.items.map((item: LeaderboardItem) => {
                 const isCurrentUser = item.traderId?.toLowerCase() === currentUserTraderId
+                const specialPosition = getSpecialPosition(item.rank)
                 return (
                   <tr
                     key={item.traderId}
-                    className={isCurrentUser ? 'current-user-row' : ''}
+                    className={`${isCurrentUser ? 'current-user-row' : ''} ${getSpecialClass(item.rank)}`}
                   >
-                    <td className="rank-cell">#{item.rank}</td>
+                    <td className="rank-cell">
+                      #{item.rank}
+                      {specialPosition && (
+                        <span className="special-label">
+                          {specialPosition.label}
+                        </span>
+                      )}
+                    </td>
+                    <td className="prize-cell">
+                      {leaderboardData?.prizePool?.[item.rank]
+                        ? `$${leaderboardData.prizePool[item.rank]}`
+                        : '-'}
+                    </td>
                     <td className="address-cell" title={item.traderId}>
                       {formatAddress(item.traderId)}
                     </td>
                     <td className="numeric-cell">{item.score}</td>
                     <td className="numeric-cell">${formatVolume(item.volume)}</td>
+                    <td className="numeric-cell volume-24h">${formatVolume(item.volume24h)}</td>
                     <td className={`numeric-cell ${parseFloat(item.pnl) >= 0 ? 'positive' : 'negative'}`}>
                       {formatPnL(item.pnl)}
                     </td>

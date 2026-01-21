@@ -72,6 +72,7 @@ class TradingEngine {
   private lastContext: TradingContext | null = null
   private marketContexts: Map<string, TradingContext> = new Map()
   private orderCancelListener: ((e: Event) => void) | null = null
+  private configVersions: Map<string, number> = new Map() // Track config versions for change detection
 
   private emitStatus(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', verbosity: 'simple' | 'debug' = 'simple'): void {
     this.onStatusCallbacks.forEach((callback) => {
@@ -453,6 +454,7 @@ class TradingEngine {
     }
 
     this.marketConfigs.clear()
+    this.configVersions.clear() // Clear cached config versions
 
     // Notify listeners that trading has stopped
     this.emitTradingStateChange(false)
@@ -696,18 +698,23 @@ class TradingEngine {
         // Debug: Strategy cycle start
         this.emitStatus(i18next.t('trading_console.cycle_starting', { pair, cycle: this.sessionTradeCycles }), 'info', 'debug')
 
-        // Refresh config from database to get latest risk management settings
+        // Refresh config from database only if version changed (avoids redundant DB reads)
         const storedConfig = await db.strategyConfigs.get(marketConfig.market.market_id)
         if (storedConfig) {
-          marketConfig.config = storedConfig.config
+          const currentVersion = storedConfig.version ?? 0
+          const cachedVersion = this.configVersions.get(marketConfig.market.market_id) ?? -1
+          if (currentVersion !== cachedVersion) {
+            marketConfig.config = storedConfig.config
+            this.configVersions.set(marketConfig.market.market_id, currentVersion)
+          }
         }
 
         // CHECK 1: Is trading paused due to max session loss?
-        // Get the current session to check P&L
-        const sessionForPauseCheck = marketConfig.sessionId
+        // Get the current session to check P&L (reused later for context metrics)
+        const currentSession = marketConfig.sessionId
           ? await tradingSessionService.getSessionById(marketConfig.sessionId)
           : null
-        if (this.isTradingPausedDueToSessionLoss(marketConfig.config, sessionForPauseCheck)) {
+        if (this.isTradingPausedDueToSessionLoss(marketConfig.config, currentSession)) {
           const maxLoss = marketConfig.config.riskManagement?.maxSessionLossUsd || 0
           this.emitStatus(i18next.t('trading_console.session_loss_exceeded', { pair, maxLoss }), 'warning')
           // Reschedule with longer delay when paused
@@ -718,21 +725,50 @@ class TradingEngine {
           return
         }
 
-        // CHECK 2: Order timeouts - cancel stale orders
-        await this.checkOrderTimeouts(marketConfig.market.market_id, marketConfig.config, this.ownerAddress!)
+        // Gather context for rich console display and prefetch data for executor
+        // Fetch all data in parallel to minimize API calls
+        let prefetchedBalances: { base: any; quote: any } | undefined
+        let prefetchedTicker: any | undefined
+        let prefetchedOrderBook: any | undefined
+        let prefetchedOpenOrders: any[] | undefined
 
-        // Gather context for rich console display
         try {
-          const [balances, openOrders, ticker] = await Promise.all([
+          // Clear balance cache to ensure fresh data (important for accurate order placement)
+          balanceService.clearCache()
+
+          const [balances, openOrders, ticker, orderBook] = await Promise.all([
             balanceService.getMarketBalances(marketConfig.market, this.tradingAccountId!, this.ownerAddress!),
             orderService.getOpenOrders(marketConfig.market.market_id, this.ownerAddress!),
-            marketService.getTicker(marketConfig.market.market_id)
+            marketService.getTicker(marketConfig.market.market_id),
+            marketService.getOrderBook(marketConfig.market.market_id)
           ])
+
+          // Store for passing to executor
+          prefetchedBalances = balances
+          prefetchedTicker = ticker
+          prefetchedOrderBook = orderBook
+          prefetchedOpenOrders = openOrders
+
+          // CHECK 2: Order timeouts - cancel stale orders (uses prefetched openOrders)
+          const cancelledOrderIds = await this.checkOrderTimeoutsWithOrders(
+            marketConfig.market.market_id,
+            marketConfig.config,
+            this.ownerAddress!,
+            openOrders
+          )
+
+          // Remove cancelled orders from prefetched list so executor has accurate count
+          if (cancelledOrderIds.length > 0) {
+            prefetchedOpenOrders = openOrders.filter((o: any) => !cancelledOrderIds.includes(o.order_id))
+          } else {
+            prefetchedOpenOrders = openOrders
+          }
 
           const baseBalanceHuman = new Decimal(balances.base.unlocked).div(10 ** marketConfig.market.base.decimals)
           const quoteBalanceHuman = new Decimal(balances.quote.unlocked).div(10 ** marketConfig.market.quote.decimals)
-          const buyOrders = openOrders.filter(o => o.side === OrderSide.Buy)
-          const sellOrders = openOrders.filter(o => o.side === OrderSide.Sell)
+          // Use filtered openOrders (after timeout cancellations) for accurate counts
+          const buyOrders = prefetchedOpenOrders.filter((o: any) => o.side === OrderSide.Buy)
+          const sellOrders = prefetchedOpenOrders.filter((o: any) => o.side === OrderSide.Sell)
 
           // Find pending sell order (waiting in orderbook)
           let pendingSellOrder: { price: string; quantity: string } | null = null
@@ -778,11 +814,7 @@ class TradingEngine {
 
           const nextRunIn = marketConfig.nextRunAt ? Math.max(0, Math.round((marketConfig.nextRunAt - Date.now()) / 1000)) : 0
 
-          // Get session metrics for THIS specific market
-          const currentSession = marketConfig.sessionId
-            ? await tradingSessionService.getSessionById(marketConfig.sessionId)
-            : null
-
+          // Session metrics use currentSession fetched earlier (avoids duplicate API call)
           const baseSymbol = marketConfig.market.base.symbol
 
           const context: TradingContext = {
@@ -832,12 +864,18 @@ class TradingEngine {
         // double-tracking race condition. The post-execution tracking also handles
         // immediate sell orders and P&L updates in a single pass.
 
-        // Execute unified strategy executor
+        // Execute unified strategy executor with prefetched data to avoid duplicate API calls
         const result = await unifiedStrategyExecutor.execute(
           marketConfig.market,
           marketConfig.config,
           this.ownerAddress!,
-          this.tradingAccountId!
+          this.tradingAccountId!,
+          prefetchedTicker || prefetchedOrderBook || prefetchedBalances || prefetchedOpenOrders ? {
+            ticker: prefetchedTicker,
+            orderBook: prefetchedOrderBook,
+            balances: prefetchedBalances,
+            openOrders: prefetchedOpenOrders
+          } : undefined
         )
 
         console.log(`[TradingEngine] Strategy result:`, result)
@@ -862,44 +900,26 @@ class TradingEngine {
             if (orderExec.success && orderExec.orderId) {
               console.log(`[TradingEngine] Order placed: ${orderExec.side} ${orderExec.orderId}`)
               
-              // Fetch order to get fill prices (price_fill and filled_quantity)
-              // Try multiple times with delays to get fill prices if order was just placed
+              // Fetch order once to get status and any immediate fill info
+              // No retries/delays needed - trackOrderFills() handles fill detection later
               let priceFill: string | undefined
               let filledQuantity: string | undefined
               let fetchedOrder: Order | null = null
-              
-              const fetchFillPrices = async (retries = 3, delay = 1000) => {
-                for (let i = 0; i < retries; i++) {
-                  try {
-                    const order = await orderService.getOrder(orderExec.orderId, marketConfig.market.market_id, this.ownerAddress!)
-                    if (order) {
-                      // Store the fetched order for later use
-                      fetchedOrder = order
-                      
-                      if (order.price_fill && order.price_fill !== '0' && order.price_fill !== '') {
-                        priceFill = order.price_fill
-                        console.log(`[TradingEngine] Fetched fill price for order ${orderExec.orderId}: ${priceFill}`)
-                      }
-                      if (order.filled_quantity && order.filled_quantity !== '0') {
-                        filledQuantity = order.filled_quantity
-                        console.log(`[TradingEngine] Fetched filled quantity for order ${orderExec.orderId}: ${filledQuantity}`)
-                      }
-                      // If we got fill prices, break early
-                      if (priceFill || filledQuantity) {
-                        break
-                      }
-                    }
-                  } catch (error) {
-                    console.warn(`[TradingEngine] Attempt ${i + 1} failed to fetch fill prices for order ${orderExec.orderId}:`, error)
+
+              try {
+                const order = await orderService.getOrder(orderExec.orderId, marketConfig.market.market_id, this.ownerAddress!)
+                if (order) {
+                  fetchedOrder = order
+                  if (order.price_fill && order.price_fill !== '0' && order.price_fill !== '') {
+                    priceFill = order.price_fill
                   }
-                  // Wait before retry (except on last attempt)
-                  if (i < retries - 1) {
-                    await new Promise(resolve => setTimeout(resolve, delay))
+                  if (order.filled_quantity && order.filled_quantity !== '0') {
+                    filledQuantity = order.filled_quantity
                   }
                 }
+              } catch (error) {
+                console.warn(`[TradingEngine] Failed to fetch order ${orderExec.orderId}:`, error)
               }
-              
-              await fetchFillPrices()
               
               // Note: orderService.getOrder() already stores the order in the database,
               // so fetchedOrder (if not null) is already persisted with latest fill info.
@@ -1111,14 +1131,18 @@ class TradingEngine {
               )
             }
 
-            // Update config in database with latest fill prices
+            // Update config in database with latest fill prices and incremented version
             if (fillsDetected.size > 0) {
+              const currentVersion = this.configVersions.get(marketConfig.market.market_id) ?? 0
+              const newVersion = currentVersion + 1
               await db.strategyConfigs.update(marketConfig.market.market_id, {
                 config: updatedConfig,
                 updatedAt: Date.now(),
+                version: newVersion,
               })
-              // Update local config for next execution
+              // Update local config and version for next execution
               marketConfig.config = updatedConfig
+              this.configVersions.set(marketConfig.market.market_id, newVersion)
               console.log(`[TradingEngine] Updated strategy config with fill prices. Last buy price: ${updatedConfig.averageBuyPrice || 'not set'}`)
 
               // Process fills for each order type
@@ -1326,30 +1350,46 @@ class TradingEngine {
 
   /**
    * Check and cancel orders that have exceeded the timeout
+   * @deprecated Use checkOrderTimeoutsWithOrders for better performance
    */
   private async checkOrderTimeouts(
     marketId: string,
     config: StrategyConfig,
     ownerAddress: string
   ): Promise<number> {
+    const openOrders = await orderService.getOpenOrders(marketId, ownerAddress)
+    const cancelledIds = await this.checkOrderTimeoutsWithOrders(marketId, config, ownerAddress, openOrders)
+    return cancelledIds.length
+  }
+
+  /**
+   * Check and cancel orders that have exceeded the timeout
+   * Uses prefetched openOrders to avoid duplicate API call
+   * @returns Array of cancelled order IDs
+   */
+  private async checkOrderTimeoutsWithOrders(
+    marketId: string,
+    config: StrategyConfig,
+    ownerAddress: string,
+    openOrders: any[]
+  ): Promise<string[]> {
+    const cancelledOrderIds: string[] = []
+
     // Check if order timeout is enabled
     if (!config.riskManagement?.orderTimeoutEnabled || !config.riskManagement?.orderTimeoutMinutes) {
-      return 0
+      return cancelledOrderIds
     }
 
     const timeoutMs = config.riskManagement.orderTimeoutMinutes * 60 * 1000
     const cutoffTime = Date.now() - timeoutMs
-    let cancelledCount = 0
 
     try {
-      const openOrders = await orderService.getOpenOrders(marketId, ownerAddress)
-
       for (const order of openOrders) {
         // Check if order has exceeded timeout
         if (order.created_at && order.created_at < cutoffTime) {
           try {
             await orderService.cancelOrder(order.order_id, marketId, ownerAddress)
-            cancelledCount++
+            cancelledOrderIds.push(order.order_id)
             console.log(`[TradingEngine] Order timeout: Cancelled order ${order.order_id} (age: ${Math.floor((Date.now() - order.created_at) / 60000)} min)`)
 
             // Update trade record to show cancelled status
@@ -1363,14 +1403,14 @@ class TradingEngine {
         }
       }
 
-      if (cancelledCount > 0) {
-        this.emitStatus(i18next.t('trading_console.orders_timeout', { count: cancelledCount }), 'warning')
+      if (cancelledOrderIds.length > 0) {
+        this.emitStatus(i18next.t('trading_console.orders_timeout', { count: cancelledOrderIds.length }), 'warning')
       }
     } catch (error) {
       console.error('[TradingEngine] Error checking order timeouts:', error)
     }
 
-    return cancelledCount
+    return cancelledOrderIds
   }
 }
 

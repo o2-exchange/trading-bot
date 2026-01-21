@@ -160,6 +160,20 @@
   color: var(--destructive);
 }
 
+/* Reward stat styling */
+.stat-item.reward-stat {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 215, 0, 0.05) 100%);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-left: 4px;
+}
+
+.stat-value.reward {
+  color: #FFD700;
+  font-weight: 700;
+}
+
 /* Right side container */
 .competition-right {
   display: flex;

@@ -138,10 +138,15 @@
   letter-spacing: 0.5px;
 }
 
-.leaderboard-table th:nth-child(3),
 .leaderboard-table th:nth-child(4),
-.leaderboard-table th:nth-child(5) {
+.leaderboard-table th:nth-child(5),
+.leaderboard-table th:nth-child(6),
+.leaderboard-table th:nth-child(7) {
   text-align: right;
+}
+
+.leaderboard-table th:nth-child(2) {
+  text-align: center;
 }
 
 .leaderboard-table tbody tr {
@@ -192,6 +197,83 @@
   color: var(--destructive);
 }
 
+/* Prize column styles */
+.prize-cell {
+  text-align: center;
+  font-weight: 700;
+  color: #FFD700;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
+}
+
+/* 24h Volume column styles */
+.numeric-cell.volume-24h {
+  color: var(--muted-foreground);
+}
+
+/* Special position styles */
+.special-gold {
+  background-color: rgba(255, 215, 0, 0.1);
+}
+
+.special-accent {
+  background-color: rgba(255, 0, 0, 0.05);
+}
+
+.special-label {
+  font-size: 0.7em;
+  margin-left: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.special-gold .special-label {
+  background-color: gold;
+  color: black;
+}
+
+.special-accent .special-label {
+  background-color: var(--destructive);
+  color: white;
+}
+
+/* Lottery info styles */
+.leaderboard-lottery-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background-color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.lottery-label {
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
+
+.lottery-value {
+  color: #FFD700;
+  font-weight: 700;
+}
+
+.lottery-separator {
+  color: var(--muted-foreground);
+  opacity: 0.5;
+}
+
+.lottery-details {
+  color: var(--muted-foreground);
+}
+
+.lottery-requirement {
+  color: var(--muted-foreground);
+}
+
 @media (max-width: 768px) {
   .leaderboard-modal-content {
     max-width: 100%;
@@ -217,6 +299,13 @@
   .leaderboard-table th,
   .leaderboard-table td {
     padding: 8px 12px;
+  }
+
+  .leaderboard-lottery-info {
+    flex-wrap: wrap;
+    white-space: normal;
+    padding: 8px 16px;
+    font-size: 12px;
   }
 }
 

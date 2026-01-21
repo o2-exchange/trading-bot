@@ -5,10 +5,11 @@ import { DEFAULT_PRECISION } from '../constants/o2Constants'
 
 class MarketService {
   private marketsCache: Map<string, Market> = new Map()
-  private tickerCache: Map<string, MarketTicker> = new Map()
-  private orderBookCache: Map<string, OrderBookDepth> = new Map()
+  private tickerCache: Map<string, { data: MarketTicker; timestamp: number }> = new Map()
+  private orderBookCache: Map<string, { data: OrderBookDepth; timestamp: number }> = new Map()
   private booksWhitelistId: string | null = null
   private accountsRegistryId: string | null = null
+  private readonly CACHE_TTL = 1000 // 1 second TTL for ticker/orderbook
 
   async fetchMarkets(forceRefresh: boolean = false): Promise<Market[]> {
     // Check cache first - if we have markets cached and not forcing refresh, return them
@@ -85,25 +86,37 @@ class MarketService {
   }
 
   async getTicker(marketId: string): Promise<MarketTicker | null> {
+    // Check cache first
+    const cached = this.tickerCache.get(marketId)
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.data
+    }
+
     try {
       const ticker = await o2ApiService.getTicker(marketId)
-      this.tickerCache.set(marketId, ticker)
+      this.tickerCache.set(marketId, { data: ticker, timestamp: Date.now() })
       return ticker
     } catch (error) {
       console.error('Failed to fetch ticker', error)
-      return this.tickerCache.get(marketId) || null
+      return cached?.data || null
     }
   }
 
   async getOrderBook(marketId: string, precision: number = DEFAULT_PRECISION): Promise<OrderBookDepth | null> {
+    // Check cache first
+    const cached = this.orderBookCache.get(marketId)
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.data
+    }
+
     try {
       const depth = await o2ApiService.getDepth(marketId, precision)
       depth.timestamp = Date.now()
-      this.orderBookCache.set(marketId, depth)
+      this.orderBookCache.set(marketId, { data: depth, timestamp: Date.now() })
       return depth
     } catch (error) {
       console.error('Failed to fetch order book', error)
-      return this.orderBookCache.get(marketId) || null
+      return cached?.data || null
     }
   }
 
@@ -112,11 +125,13 @@ class MarketService {
   }
 
   getCachedTicker(marketId: string): MarketTicker | null {
-    return this.tickerCache.get(marketId) || null
+    const cached = this.tickerCache.get(marketId)
+    return cached?.data || null
   }
 
   getCachedOrderBook(marketId: string): OrderBookDepth | null {
-    return this.orderBookCache.get(marketId) || null
+    const cached = this.orderBookCache.get(marketId)
+    return cached?.data || null
   }
 }
 

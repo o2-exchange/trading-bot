@@ -226,6 +226,14 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
                 {formatPnL(currentUser.pnl)}
               </span>
             </div>
+            {leaderboardData?.prizePool?.[currentUser.rank] && (
+              <div className="stat-item reward-stat">
+                <span className="stat-label">{t('competition.potential_reward')}</span>
+                <span className="stat-value reward">
+                  ${leaderboardData.prizePool[currentUser.rank]}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -239,7 +247,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
           {activeCompetition.rewardPool && (
             <div className="competition-reward">
               <span className="reward-label">{t('competition.reward')}</span>
-              <span className="reward-value">{activeCompetition.rewardPool}</span>
+              <span className="reward-value">${activeCompetition.rewardPool}</span>
             </div>
           )}
         </div>

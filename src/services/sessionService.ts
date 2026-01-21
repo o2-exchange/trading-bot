@@ -27,8 +27,24 @@ import { TradingAccount } from '../types/tradingAccount'
 class SessionService {
   private password: string | null = null
 
+  // Session validation cache to avoid repeated on-chain calls
+  // Key: tradingAccountId, Value: { isValid: boolean, timestamp: number }
+  private validationCache: Map<string, { isValid: boolean; timestamp: number }> = new Map()
+  private readonly VALIDATION_CACHE_TTL = 30000 // 30 seconds - on-chain validation is slow, cache aggressively
+
   setPassword(password: string) {
     this.password = password
+  }
+
+  /**
+   * Clear validation cache for a specific account (call when session is known to be invalid)
+   */
+  clearValidationCache(tradingAccountId?: string) {
+    if (tradingAccountId) {
+      this.validationCache.delete(tradingAccountId.toLowerCase())
+    } else {
+      this.validationCache.clear()
+    }
   }
 
   async createSession(
@@ -273,6 +289,9 @@ class SessionService {
       console.warn('Failed to store session in cache', error)
     }
 
+    // Clear validation cache for this account so fresh validation runs on first use
+    this.clearValidationCache(account.id)
+
     return session
   }
 
@@ -288,6 +307,10 @@ class SessionService {
    * - Expired sessions: Clear and return false (definitive)
    * - Revoked on-chain: Clear and return false (definitive)
    * - Network errors: Return true (let trading fail if session is actually bad)
+   *
+   * Performance optimization:
+   * - On-chain validation results are cached for 30 seconds
+   * - This prevents 8+ blockchain calls per order cycle
    */
   async validateSession(
     tradingAccountId: string,
@@ -295,10 +318,13 @@ class SessionService {
     skipOnChainValidation = false
   ): Promise<boolean> {
     try {
+      const normalizedAccountId = tradingAccountId.toLowerCase()
+
       // Get session from cache
       const cachedSession = useSessionStore.getState().getSession(tradingAccountId as `0x${string}`)
       if (!cachedSession) {
         console.log('[SessionService] No cached session found')
+        this.validationCache.delete(normalizedAccountId)
         return false
       }
 
@@ -310,6 +336,7 @@ class SessionService {
         console.log('[SessionService] Session expired')
         // Clear expired session - this is definitive
         useSessionStore.getState().clearSessionForAccount(tradingAccountId as `0x${string}`)
+        this.validationCache.delete(normalizedAccountId)
         return false
       }
 
@@ -318,6 +345,7 @@ class SessionService {
       if (!sessionId) {
         console.log('[SessionService] Invalid session ID format')
         useSessionStore.getState().clearSessionForAccount(tradingAccountId as `0x${string}`)
+        this.validationCache.delete(normalizedAccountId)
         return false
       }
 
@@ -325,6 +353,7 @@ class SessionService {
       if (!dbSession || !dbSession.isActive) {
         console.log('[SessionService] Session not found in DB or inactive')
         useSessionStore.getState().clearSessionForAccount(tradingAccountId as `0x${string}`)
+        this.validationCache.delete(normalizedAccountId)
         return false
       }
 
@@ -332,12 +361,20 @@ class SessionService {
       if (dbSession.tradeAccountId.toLowerCase() !== tradingAccountId.toLowerCase()) {
         console.log('[SessionService] Session trading account mismatch')
         useSessionStore.getState().clearSessionForAccount(tradingAccountId as `0x${string}`)
+        this.validationCache.delete(normalizedAccountId)
         return false
       }
 
       // CRITICAL: Validate on-chain to detect session revocation
       // This is what catches when user signs in another O2 app
       if (!skipOnChainValidation) {
+        // Check validation cache first - on-chain calls are slow
+        const cachedValidation = this.validationCache.get(normalizedAccountId)
+        if (cachedValidation && Date.now() - cachedValidation.timestamp < this.VALIDATION_CACHE_TTL) {
+          // Use cached result - no need to log on every call
+          return cachedValidation.isValid
+        }
+
         console.log('[SessionService] Performing on-chain session validation...')
         try {
           const { sessionManagerService } = await import('./sessionManagerService')
@@ -349,6 +386,8 @@ class SessionService {
             // Can't get manager - but session looks valid locally
             // Return true and let actual trading fail if session is bad
             console.warn('[SessionService] Could not get manager for validation - assuming valid')
+            // Cache this as valid
+            this.validationCache.set(normalizedAccountId, { isValid: true, timestamp: Date.now() })
             return true
           }
 
@@ -362,15 +401,21 @@ class SessionService {
             useSessionStore.getState().clearSessionForAccount(tradingAccountId as `0x${string}`)
             // Also mark as inactive in DB
             await this.deactivateSession(sessionId)
+            // Cache invalid result
+            this.validationCache.set(normalizedAccountId, { isValid: false, timestamp: Date.now() })
             return false
           }
 
           console.log('[SessionService] ✅ Session valid on-chain')
+          // Cache valid result
+          this.validationCache.set(normalizedAccountId, { isValid: true, timestamp: Date.now() })
         } catch (error) {
           // Network error or other transient issue
           // DON'T clear session - it looks valid locally
           // Let actual trading fail if session is truly invalid
           console.warn('[SessionService] On-chain validation error (treating as valid):', error)
+          // Cache as valid on error (don't keep retrying on every call)
+          this.validationCache.set(normalizedAccountId, { isValid: true, timestamp: Date.now() })
           return true
         }
       }

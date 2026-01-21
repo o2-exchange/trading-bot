@@ -24,6 +24,11 @@ export interface CompetitionListResponse {
   competitions: Competition[]
 }
 
+export interface StreakInfo {
+  current: number
+  longest: number
+}
+
 export interface LeaderboardItem {
   traderId: string
   tradingAccount: string
@@ -32,9 +37,26 @@ export interface LeaderboardItem {
   unrealizedPnl: string
   volume: string
   volume24h: string
+  volumeWithoutSelfTrade: string
+  volumeWithoutSelfTrade24h: string
+  boostedVolume: string
   rank: string
   score: string
   referralVolume: string
+  streak?: StreakInfo
+}
+
+export interface LotteryInfo {
+  potSize: string
+  winners: string
+  prize: string
+  minRank: string
+  minScore: string
+}
+
+export interface SpecialPosition {
+  color: string
+  label: string
 }
 
 export interface LeaderboardResponse {
@@ -62,5 +84,11 @@ export interface LeaderboardResponse {
   markets: string[]
   startDate: string
   endDate: string | null
+  lottery?: LotteryInfo
+  specialPositions?: Record<string, SpecialPosition>
+  marketBoosts?: Record<string, number>
+  rewardMultiplier?: number
+  rewardPoolMultiplied?: boolean
+  rewardPoolMinVolume?: string
 }
 

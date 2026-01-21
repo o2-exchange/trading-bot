@@ -204,7 +204,12 @@ class UnifiedStrategyExecutor {
         buy: [], // Clear buy history since position is exited
         sell: config.lastFillPrices?.sell || [] // Keep sell history for reference
       }
-      await db.strategyConfigs.update(market.market_id, { config: updatedConfig })
+      // Update with incremented version for change detection
+      const storedConfig = await db.strategyConfigs.get(market.market_id)
+      await db.strategyConfigs.update(market.market_id, {
+        config: updatedConfig,
+        version: (storedConfig?.version ?? 0) + 1,
+      })
       console.log('[UnifiedStrategyExecutor] Stop loss: Cleared average buy price')
 
     } catch (error: any) {
@@ -225,12 +230,19 @@ class UnifiedStrategyExecutor {
 
   /**
    * Execute strategy based on configuration
+   * @param prefetchedData Optional pre-fetched market data to avoid duplicate API calls
    */
   async execute(
     market: Market,
     config: StrategyConfig,
     ownerAddress: string,
-    tradingAccountId: string
+    tradingAccountId: string,
+    prefetchedData?: {
+      ticker?: any
+      orderBook?: any
+      balances?: { base: any; quote: any }
+      openOrders?: any[] // Prefetched open orders to avoid duplicate API calls
+    }
   ): Promise<StrategyExecutionResult> {
     const orders: OrderExecution[] = []
     
@@ -255,8 +267,8 @@ class UnifiedStrategyExecutor {
         }
       }
 
-      // Get current market data
-      const ticker = await marketService.getTicker(market.market_id)
+      // Get current market data (use prefetched data if available)
+      const ticker = prefetchedData?.ticker || await marketService.getTicker(market.market_id)
       if (!ticker) {
         console.warn('[UnifiedStrategyExecutor] No ticker data available')
         return {
@@ -265,8 +277,8 @@ class UnifiedStrategyExecutor {
         }
       }
 
-      // Get orderbook for spread calculation
-      const orderBook = await marketService.getOrderBook(market.market_id)
+      // Get orderbook for spread calculation (use prefetched data if available)
+      const orderBook = prefetchedData?.orderBook || await marketService.getOrderBook(market.market_id)
       
       // Check spread if orderbook is available
       if (orderBook && config.orderConfig.maxSpreadPercent > 0) {
@@ -281,15 +293,19 @@ class UnifiedStrategyExecutor {
         }
       }
 
-      // Clear balance cache to ensure fresh data
-      balanceService.clearCache()
-
-      // Get current balances
-      const balances = await balanceService.getMarketBalances(
-        market,
-        tradingAccountId,
-        ownerAddress
-      )
+      // Get current balances (use prefetched data if available, otherwise fetch fresh)
+      let balances: { base: any; quote: any }
+      if (prefetchedData?.balances) {
+        balances = prefetchedData.balances
+      } else {
+        // Clear balance cache to ensure fresh data only when not prefetched
+        balanceService.clearCache()
+        balances = await balanceService.getMarketBalances(
+          market,
+          tradingAccountId,
+          ownerAddress
+        )
+      }
 
       // Log available balances for debugging
       const baseBalanceHuman = new Decimal(balances.base.unlocked).div(10 ** market.base.decimals)
@@ -300,14 +316,14 @@ class UnifiedStrategyExecutor {
         orderType: config.orderConfig.orderType
       })
 
-      // Check max open orders if configured
+      // Check max open orders if configured (use prefetched data if available)
       let shouldPlaceBuy = true
       let shouldPlaceSell = true
-      
+
       if (config.orderManagement.maxOpenOrders > 0) {
-        const openOrders = await orderService.getOpenOrders(market.market_id, ownerAddress)
-        const buyOrders = openOrders.filter((o) => o.side === OrderSide.Buy)
-        const sellOrders = openOrders.filter((o) => o.side === OrderSide.Sell)
+        const openOrders = prefetchedData?.openOrders || await orderService.getOpenOrders(market.market_id, ownerAddress)
+        const buyOrders = openOrders.filter((o: any) => o.side === OrderSide.Buy)
+        const sellOrders = openOrders.filter((o: any) => o.side === OrderSide.Sell)
         
         if (config.orderConfig.side === 'Buy' || config.orderConfig.side === 'Both') {
           if (buyOrders.length >= config.orderManagement.maxOpenOrders) {

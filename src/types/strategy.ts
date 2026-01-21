@@ -118,6 +118,7 @@ export interface StrategyConfigStore {
   isActive: boolean
   createdAt: number
   updatedAt: number
+  version?: number // Incremented on each update for change detection
 }
 
 // ============================================
