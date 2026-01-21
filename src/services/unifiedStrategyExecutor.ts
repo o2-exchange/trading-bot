@@ -280,15 +280,34 @@ class UnifiedStrategyExecutor {
       // Get orderbook for spread calculation (use prefetched data if available)
       const orderBook = prefetchedData?.orderBook || await marketService.getOrderBook(market.market_id)
       
-      // Check spread if orderbook is available
+      // Check spread if orderbook is available (depth-aware calculation)
       if (orderBook && config.orderConfig.maxSpreadPercent > 0) {
-        const spread = this.calculateSpread(orderBook, market)
-        if (spread && spread > config.orderConfig.maxSpreadPercent) {
-          console.log(`[UnifiedStrategyExecutor] Spread ${spread.toFixed(2)}% exceeds max ${config.orderConfig.maxSpreadPercent}%, skipping`)
+        // Use minOrderSizeUsd as reference for depth-aware spread calculation
+        const referenceOrderSizeUsd = config.positionSizing.minOrderSizeUsd || 10
+        const spreadResult = this.calculateEffectiveSpread(orderBook, market, referenceOrderSizeUsd)
+
+        if (spreadResult && spreadResult.spread > config.orderConfig.maxSpreadPercent) {
+          const pair = `${market.base.symbol}/${market.quote.symbol}`
+
+          let skipReason: string
+          if (spreadResult.insufficientLiquidity) {
+            // Not enough liquidity to fill even the minimum order
+            skipReason = `${pair}: Insufficient liquidity - cannot fill $${referenceOrderSizeUsd} order, skipping`
+          } else {
+            const isDepthIssue = spreadResult.spread > spreadResult.topOfBookSpread * 1.1 // 10% higher means depth is the issue
+            if (isDepthIssue) {
+              skipReason = `${pair}: Effective spread ${spreadResult.spread.toFixed(2)}% for $${referenceOrderSizeUsd} order exceeds max ${config.orderConfig.maxSpreadPercent}% (top-of-book: ${spreadResult.topOfBookSpread.toFixed(2)}%), skipping`
+            } else {
+              skipReason = `${pair}: Spread ${spreadResult.spread.toFixed(2)}% exceeds max ${config.orderConfig.maxSpreadPercent}%, skipping`
+            }
+          }
+
+          console.log(`[UnifiedStrategyExecutor] ${skipReason}`)
           return {
             executed: false,
             orders: [],
             nextRunAt,
+            skipReason,
           }
         }
       }
@@ -466,26 +485,140 @@ class UnifiedStrategyExecutor {
   }
 
   /**
-   * Calculate spread percentage from orderbook
+   * Calculate VWAP (Volume-Weighted Average Price) for a given order size
+   * Walks through orderbook levels to find the average price you'd pay/receive
+   *
+   * @param levels - Orderbook levels (bids or asks) as [price, quantity] tuples or {price, quantity} objects
+   * @param orderSizeBase - Order size in base currency (e.g., ETH amount)
+   * @param quoteDecimals - Decimals for quote currency (for price conversion)
+   * @param baseDecimals - Decimals for base currency (for quantity conversion)
+   * @returns VWAP in human-readable format, or null if insufficient liquidity
    */
-  private calculateSpread(orderBook: any, market: Market): number | null {
+  private calculateVWAP(
+    levels: Array<[string, string]> | Array<{price: string, quantity: string}>,
+    orderSizeBase: Decimal,
+    quoteDecimals: number,
+    baseDecimals: number
+  ): Decimal | null {
+    if (!levels || levels.length === 0) {
+      return null
+    }
+
+    let remainingSize = orderSizeBase
+    let totalCost = new Decimal(0)
+    let totalFilled = new Decimal(0)
+
+    for (const level of levels) {
+      if (remainingSize.lte(0)) break
+
+      // Handle both array format [price, quantity] and object format {price, quantity}
+      const priceRaw = Array.isArray(level) ? level[0] : (level as {price: string, quantity: string}).price
+      const quantityRaw = Array.isArray(level) ? level[1] : (level as {price: string, quantity: string}).quantity
+
+      const price = new Decimal(priceRaw).div(10 ** quoteDecimals)
+      const quantity = new Decimal(quantityRaw).div(10 ** baseDecimals)
+
+      if (quantity.lte(0) || price.lte(0)) continue
+
+      const fillSize = Decimal.min(remainingSize, quantity)
+      totalCost = totalCost.plus(fillSize.mul(price))
+      totalFilled = totalFilled.plus(fillSize)
+      remainingSize = remainingSize.minus(fillSize)
+    }
+
+    // If we couldn't fill the entire order, return null (insufficient liquidity)
+    if (remainingSize.gt(0) || totalFilled.lte(0)) {
+      return null
+    }
+
+    return totalCost.div(totalFilled)
+  }
+
+  /**
+   * Calculate effective spread percentage considering orderbook depth
+   *
+   * This walks through the orderbook to find what price you'd actually pay/receive
+   * for a given order size, accounting for thin liquidity at the top of book.
+   *
+   * @param orderBook - The orderbook with bids and asks
+   * @param market - Market info for decimal conversion
+   * @param orderSizeUsd - Reference order size in USD to check depth for
+   * @returns Object with spread percentage and details, or null if insufficient data
+   */
+  private calculateEffectiveSpread(
+    orderBook: any,
+    market: Market,
+    orderSizeUsd: number
+  ): { spread: number; effectiveBid: Decimal; effectiveAsk: Decimal; midPrice: Decimal; topOfBookSpread: number; insufficientLiquidity?: boolean } | null {
     if (!orderBook.bids || orderBook.bids.length === 0 || !orderBook.asks || orderBook.asks.length === 0) {
       return null
     }
 
     const bestBidEntry = orderBook.bids[0]
     const bestAskEntry = orderBook.asks[0]
-    
-    if (!bestBidEntry || !bestAskEntry || bestBidEntry[0] === undefined || bestAskEntry[0] === undefined) {
+
+    if (!bestBidEntry || !bestAskEntry) {
       return null
     }
 
-    const bestBid = new Decimal(bestBidEntry[0]).div(10 ** market.quote.decimals)
-    const bestAsk = new Decimal(bestAskEntry[0]).div(10 ** market.quote.decimals)
-    const midPrice = bestBid.plus(bestAsk).div(2)
-    const spread = bestAsk.minus(bestBid).div(midPrice).mul(100)
+    // Handle both array format [price, quantity] and object format {price, quantity}
+    const bestBidPrice = Array.isArray(bestBidEntry) ? bestBidEntry[0] : bestBidEntry.price
+    const bestAskPrice = Array.isArray(bestAskEntry) ? bestAskEntry[0] : bestAskEntry.price
 
-    return spread.toNumber()
+    if (bestBidPrice === undefined || bestAskPrice === undefined) {
+      return null
+    }
+
+    // Calculate top-of-book prices and mid price
+    const bestBid = new Decimal(bestBidPrice).div(10 ** market.quote.decimals)
+    const bestAsk = new Decimal(bestAskPrice).div(10 ** market.quote.decimals)
+    const midPrice = bestBid.plus(bestAsk).div(2)
+
+    // Calculate top-of-book spread for comparison
+    const topOfBookSpread = bestAsk.minus(bestBid).div(midPrice).mul(100).toNumber()
+
+    // Convert USD order size to base currency amount using mid price
+    const orderSizeBase = new Decimal(orderSizeUsd).div(midPrice)
+
+    // Calculate VWAP for selling (walking through bids - highest to lowest)
+    const effectiveBid = this.calculateVWAP(
+      orderBook.bids,
+      orderSizeBase,
+      market.quote.decimals,
+      market.base.decimals
+    )
+
+    // Calculate VWAP for buying (walking through asks - lowest to highest)
+    const effectiveAsk = this.calculateVWAP(
+      orderBook.asks,
+      orderSizeBase,
+      market.quote.decimals,
+      market.base.decimals
+    )
+
+    // If we couldn't calculate VWAP (insufficient liquidity), return a high spread to trigger skip
+    // This is more conservative - if we can't fill even the minimum order, we shouldn't trade
+    if (!effectiveBid || !effectiveAsk) {
+      return {
+        spread: 999, // Very high spread to ensure we skip
+        effectiveBid: bestBid,
+        effectiveAsk: bestAsk,
+        midPrice,
+        topOfBookSpread,
+        insufficientLiquidity: true
+      }
+    }
+
+    // Calculate effective spread
+    const effectiveSpread = effectiveAsk.minus(effectiveBid).div(midPrice).mul(100)
+
+    return {
+      spread: effectiveSpread.toNumber(),
+      effectiveBid,
+      effectiveAsk,
+      midPrice,
+      topOfBookSpread
+    }
   }
 
   /**

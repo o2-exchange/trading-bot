@@ -892,6 +892,11 @@ class TradingEngine {
           return
         }
 
+        // Emit skip reason if present (e.g., spread exceeded max)
+        if (result.skipReason) {
+          this.emitStatus(result.skipReason, 'info')
+        }
+
         if (result.executed && result.orders) {
           this.sessionTradeCycles++
 

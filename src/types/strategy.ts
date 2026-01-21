@@ -294,4 +294,5 @@ export interface StrategyExecutionResult {
   executed: boolean
   orders: OrderExecution[]
   nextRunAt?: number
+  skipReason?: string // Human-readable reason why execution was skipped (e.g., spread exceeded)
 }
