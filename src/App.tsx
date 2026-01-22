@@ -28,6 +28,18 @@ function App() {
     restoreConnection()
   }, [])
 
+  // Prevent accidental tab closure
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+      return ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
   // Don't render until we've checked for existing connection
   if (!isInitialized) {
     return (
