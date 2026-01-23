@@ -112,4 +112,40 @@ export async function clearAllSessionStorage(): Promise<void> {
   privateKeysStore.clearPrivateKeys()
 
   console.log('[clearUserStorage] All session storage layers cleared')
+
+  // 5. Reset strategy configs (averageBuyPrice, lastFillPrices)
+  await resetStrategyConfigs()
+}
+
+/**
+ * Resets strategy config session state (averageBuyPrice, lastFillPrices)
+ * without clearing user's strategy settings (spread, order type, etc.)
+ * Use this when starting a new session to prevent stale buy prices affecting sell orders
+ */
+export async function resetStrategyConfigs(): Promise<void> {
+  try {
+    const configs = await db.strategyConfigs.toArray()
+    for (const config of configs) {
+      await db.strategyConfigs.update(config.id, {
+        config: {
+          ...config.config,
+          averageBuyPrice: undefined,
+          averageSellPrice: undefined,
+          lastFillPrices: { buy: [], sell: [] }
+        },
+        version: (config.version ?? 0) + 1
+      })
+    }
+    console.log('[clearUserStorage] Strategy configs reset (cleared averageBuyPrice, lastFillPrices)')
+  } catch (error) {
+    console.warn('[clearUserStorage] Failed to reset strategy configs:', error)
+  }
+
+  // Also clear processed fills to prevent stale fill tracking
+  try {
+    await db.processedFills.clear()
+    console.log('[clearUserStorage] Processed fills cleared')
+  } catch (error) {
+    console.warn('[clearUserStorage] Failed to clear processed fills:', error)
+  }
 }

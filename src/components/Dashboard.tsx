@@ -28,6 +28,7 @@ import { balanceService } from '../services/balanceService'
 import { TradingAccountBalances } from '../types/tradingAccount'
 import { filterMarkets } from '../utils/marketFilters'
 import { db } from '../services/dbService'
+import { resetStrategyConfigs } from '../utils/clearUserStorage'
 import './Dashboard.css'
 
 interface DashboardProps {
@@ -330,6 +331,9 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
       if (session) {
         await tradingSessionService.endSession(session.id)
       }
+
+      // Reset strategy configs to clear averageBuyPrice and lastFillPrices
+      await resetStrategyConfigs()
     }
 
     // Close dialog and clear the resumable session flag
