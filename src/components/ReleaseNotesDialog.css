@@ -1,0 +1,221 @@
+/* Uses .dialog-overlay from TermsOfUseDialog.css */
+
+.release-notes-dialog {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 560px;
+  width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.release-notes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.release-notes-header h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.release-notes-header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.release-notes-header .current-version {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.release-notes-header .close-button {
+  background: transparent;
+  border: none;
+  color: var(--muted-foreground);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.release-notes-header .close-button:hover {
+  color: var(--foreground);
+}
+
+.release-notes-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+
+  /* Custom scrollbar - Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Custom scrollbar - Webkit (Chrome, Safari, Edge) */
+.release-notes-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.release-notes-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.release-notes-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.release-notes-body::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+.release-entry {
+  margin-bottom: 32px;
+}
+
+.release-entry:last-of-type {
+  margin-bottom: 16px;
+}
+
+/* Date badge - Lovable style */
+.release-date-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.release-version {
+  font-weight: 600;
+}
+
+.release-date-separator {
+  margin: 0 6px;
+  opacity: 0.5;
+}
+
+.release-features {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.feature-item {
+  padding-left: 0;
+}
+
+.feature-title {
+  margin: 0 0 8px 0;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.feature-description {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.feature-details {
+  margin: 10px 0 0 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.feature-details li {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+
+.feature-details li:last-child {
+  margin-bottom: 0;
+}
+
+.auto-update-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #3b82f6;
+  margin-top: 8px;
+}
+
+.auto-update-note .info-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.release-notes-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+}
+
+.release-notes-footer .btn-primary {
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  transition: opacity 0.2s;
+}
+
+.release-notes-footer .btn-primary:hover {
+  opacity: 0.9;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .release-notes-dialog {
+    width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .release-notes-body {
+    padding: 16px;
+  }
+
+  .release-entry {
+    margin-bottom: 24px;
+  }
+
+  .feature-title {
+    font-size: 14px;
+  }
+
+  .feature-description {
+    font-size: 13px;
+  }
+}

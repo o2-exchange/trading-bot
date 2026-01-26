@@ -24,6 +24,9 @@ import DepositDialog from './DepositDialog'
 import ConnectWalletDialog from './ConnectWalletDialog'
 import TutorialsPanel from './TutorialsPanel'
 import LanguageSelector from './LanguageSelector'
+import ReleaseNotesDialog from './ReleaseNotesDialog'
+import { useVersionCheck } from '../hooks/useVersionCheck'
+import { CURRENT_VERSION } from '../constants/releaseNotes'
 import { balanceService } from '../services/balanceService'
 import { TradingAccountBalances } from '../types/tradingAccount'
 import { filterMarkets } from '../utils/marketFilters'
@@ -53,11 +56,13 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
   const [showConnectWalletDialog, setShowConnectWalletDialog] = useState(false)
   const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false)
   const [isCancellingOrders, setIsCancellingOrders] = useState(false)
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false)
   const [authReady, setAuthReady] = useState(false)
   const [authState, setAuthState] = useState<string>('idle')
   const { addToast } = useToast()
   const strategyCreateNewRef = useRef<(() => void) | null>(null)
   const strategyImportRef = useRef<(() => void) | null>(null)
+  const { shouldShowReleaseNotes, markVersionAsSeen } = useVersionCheck(authReady)
 
   // Reset local UI state when wallet disconnects
   useEffect(() => {
@@ -256,6 +261,13 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     return unsubscribe
   }, [isTrading, tradingAccount, markets, walletAddress])
 
+  // Auto-show release notes when user visits after an update
+  useEffect(() => {
+    if (shouldShowReleaseNotes) {
+      setShowReleaseNotes(true)
+    }
+  }, [shouldShowReleaseNotes])
+
   const handleStartTrading = async (resumeSession: boolean = false) => {
     if (!walletAddress || !tradingAccount) {
       addToast(t('errors.wallet_not_available'), 'error')
@@ -365,6 +377,16 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
   // Help button handler
   const handleHelpClick = () => {
     setShowWelcomeModal(true)
+  }
+
+  // Release notes dialog handlers
+  const handleVersionClick = () => {
+    setShowReleaseNotes(true)
+  }
+
+  const handleCloseReleaseNotes = () => {
+    setShowReleaseNotes(false)
+    markVersionAsSeen()
   }
 
   // Deposit dialog handler
@@ -492,6 +514,13 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
               title={t('header.help_button')}
             >
               ?
+            </button>
+            <button
+              className="version-button"
+              onClick={handleVersionClick}
+              title={t('release_notes.title')}
+            >
+              v{CURRENT_VERSION}
             </button>
             {isWalletConnected ? (
               walletAddress ? (
@@ -781,6 +810,12 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
           </div>
         </div>
       )}
+
+      {/* Release Notes Dialog */}
+      <ReleaseNotesDialog
+        isOpen={showReleaseNotes}
+        onClose={handleCloseReleaseNotes}
+      />
     </div>
   )
 }

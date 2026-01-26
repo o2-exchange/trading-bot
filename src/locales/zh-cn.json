@@ -466,6 +466,48 @@
     "trade_cycles": "交易周期",
     "recent_activity": "最近活动"
   },
+  "release_notes": {
+    "title": "更新日志",
+    "auto_update_note": "刷新页面时应用会自动更新。无需任何操作即可保持最新版本。",
+    "jan_26": {
+      "rewards_title": "排行榜奖励",
+      "rewards_desc": "直接在竞赛排行榜上查看您的潜在奖励。追踪您的排名和预估收益。",
+      "performance_title": "性能提升",
+      "performance_desc": "会话和余额缓存使交易周期大幅优化（约8秒）。",
+      "slippage_title": "滑点计算",
+      "slippage_desc": "现在检查订单簿深度并计算实际点差，当点差过大时会有清晰的UI提示。",
+      "fixes_title": "问题修复",
+      "fixes_desc": "我们修复了一些问题，让您的交易体验更顺畅。",
+      "fix_session": "修复了开始新会话时会话数据未正确重置的问题",
+      "fix_tab_warning": "添加了交易时意外关闭标签页的警告"
+    },
+    "jan_21": {
+      "language_title": "多语言支持",
+      "language_desc": "o2 Trading Bot现已支持日语、韩语、简体中文和繁体中文。在设置菜单中切换语言。",
+      "leaderboard_title": "竞赛排行榜",
+      "leaderboard_desc": "追踪您在交易竞赛中的排名。通过实时排行榜更新，了解您与其他交易者的排名对比。"
+    },
+    "jan_14": {
+      "tutorials_title": "视频教程",
+      "tutorials_desc": "新增分步视频教程帮助您入门。了解如何设置策略、管理风险和最大化您的交易。",
+      "walletconnect_title": "WalletConnect支持",
+      "walletconnect_desc": "将任何WalletConnect兼容的钱包连接到o2 Trading Bot。访问您的资金更加灵活。",
+      "analytics_title": "交易分析",
+      "analytics_desc": "新的分析仪表板，显示您的交易表现、交易量历史和盈亏趋势。"
+    },
+    "jan_12": {
+      "usdt_title": "USDT市场",
+      "usdt_desc": "使用同样强大的自动化工具在USDT市场交易。为您的策略提供更多市场选择。",
+      "export_title": "导出交易日志",
+      "export_desc": "随时下载您的完整交易记录。导出日志用于存档或税务用途。",
+      "loss_title": "会话损失限制",
+      "loss_desc": "设置每个会话的最大损失限制以保护您的资金。达到限制时交易会自动暂停。"
+    },
+    "jan_04": {
+      "initial_title": "首次发布",
+      "initial_desc": "欢迎使用o2 Trading Bot！通过可定制的策略、实时监控和对仓位的完全控制，自动化您在o2交易所的交易。"
+    }
+  },
   "trading_console": {
     "order_type_market": "市价",
     "order_type_limit": "限价",
@@ -495,5 +537,9 @@
     "stop_loss_price_info": "当前: ${{currentPrice}}, 平均买入: ${{avgBuyPrice}}, 阈值: ${{threshold}}",
     "stop_loss_selling": "正在以市价卖出 {{amount}} {{symbol}}",
     "balance_info": "{{pair}}: 余额 - {{baseBalance}} {{baseSymbol}}, ${{quoteBalance}}"
+  },
+  "mobile_restriction": {
+    "title": "仅限桌面端",
+    "message": "o2 Trading Bot专为大屏幕设计。请使用桌面或平板设备访问以获得最佳体验。"
   }
 }

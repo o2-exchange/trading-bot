@@ -4,6 +4,7 @@ import { WagmiProvider } from 'wagmi'
 import { Analytics } from '@vercel/analytics/react'
 import Dashboard from './components/Dashboard'
 import { WalletConnectionWatcher } from './components/WalletConnectionWatcher'
+import { MobileRestrictionOverlay } from './components/MobileRestrictionOverlay'
 import { walletService, wagmiConfig } from './services/walletService'
 import { useWalletStore } from './stores/useWalletStore'
 import { ToastProvider } from './components/ToastProvider'
@@ -66,6 +67,7 @@ function App() {
           />
         </div>
         <Analytics />
+        <MobileRestrictionOverlay />
       </ToastProvider>
     </WagmiProvider>
   )

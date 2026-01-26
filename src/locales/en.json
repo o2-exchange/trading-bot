@@ -563,6 +563,50 @@
     "trade_cycles": "Trade Cycles",
     "recent_activity": "Recent Activity"
   },
+  "release_notes": {
+    "title": "Release Notes",
+    "auto_update_note": "The app updates automatically when you refresh the page. No action needed to stay up-to-date.",
+    "jan_26": {
+      "rewards_title": "Leaderboard Rewards",
+      "rewards_desc": "See your potential rewards directly on the competition leaderboard. Track your position and estimated earnings as you climb the ranks.",
+      "okx_title": "OKX Wallet Support",
+      "okx_desc": "Connect your OKX wallet to start trading. We've added OKX to our list of supported EVM wallets.",
+      "performance_title": "Performance Improvements",
+      "performance_desc": "Trading cycles are now optimized to be much faster (~8 seconds faster) with session and balance caching.",
+      "slippage_title": "Slippage Calculation",
+      "slippage_desc": "Now checks orderbook depth and calculates actual spread, with clear UI messaging when spreads are too wide.",
+      "fixes_title": "Bug Fixes",
+      "fixes_desc": "We've squashed some bugs to make your trading experience smoother.",
+      "fix_session": "Fixed session data not resetting properly when starting a new session",
+      "fix_tab_warning": "Added warning when accidentally closing the tab while trading"
+    },
+    "jan_21": {
+      "language_title": "Multi-Language Support",
+      "language_desc": "o2 Trading Bot is now available in Japanese, Korean, Simplified Chinese, and Traditional Chinese. Switch languages from the settings menu.",
+      "leaderboard_title": "Competition Leaderboard",
+      "leaderboard_desc": "Track your ranking in trading competitions. See how you stack up against other traders with real-time leaderboard updates."
+    },
+    "jan_14": {
+      "tutorials_title": "Video Tutorials",
+      "tutorials_desc": "New step-by-step video tutorials to help you get started. Learn how to set up strategies, manage risk, and maximize your trading.",
+      "walletconnect_title": "WalletConnect Support",
+      "walletconnect_desc": "Connect any WalletConnect-compatible wallet to o2 Trading Bot. More flexibility in how you access your funds.",
+      "analytics_title": "Trading Analytics",
+      "analytics_desc": "New analytics dashboard showing your trading performance, volume history, and profit/loss trends."
+    },
+    "jan_12": {
+      "usdt_title": "USDT Market",
+      "usdt_desc": "Trade on the USDT market with the same powerful automation tools. More market options for your strategies.",
+      "export_title": "Export Trading Logs",
+      "export_desc": "Download your complete trading history anytime. Export logs for your records or tax purposes.",
+      "loss_title": "Session Loss Limits",
+      "loss_desc": "Set maximum loss limits per session to protect your funds. Trading automatically pauses when limits are reached."
+    },
+    "jan_04": {
+      "initial_title": "Initial Release",
+      "initial_desc": "Welcome to o2 Trading Bot! Automate your trading on the o2 exchange with customizable strategies, real-time monitoring, and full control over your positions."
+    }
+  },
   "trading_console": {
     "order_type_market": "MARKET",
     "order_type_limit": "LIMIT",
@@ -592,5 +636,9 @@
     "stop_loss_price_info": "Current: ${{currentPrice}}, Avg buy: ${{avgBuyPrice}}, Threshold: ${{threshold}}",
     "stop_loss_selling": "Selling {{amount}} {{symbol}} at market price",
     "balance_info": "{{pair}}: Balance - {{baseBalance}} {{baseSymbol}}, ${{quoteBalance}}"
+  },
+  "mobile_restriction": {
+    "title": "Desktop Only",
+    "message": "o2 Trading Bot is designed for larger screens. Please access this app from a desktop or tablet device for the best experience."
   }
 }

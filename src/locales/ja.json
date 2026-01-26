@@ -466,6 +466,48 @@
     "trade_cycles": "取引サイクル",
     "recent_activity": "最近のアクティビティ"
   },
+  "release_notes": {
+    "title": "リリースノート",
+    "auto_update_note": "ページを更新すると自動的にアプリが更新されます。最新版を維持するための操作は不要です。",
+    "jan_26": {
+      "rewards_title": "リーダーボード報酬",
+      "rewards_desc": "コンペティションリーダーボードで獲得可能な報酬を直接確認できます。ランキングと予想獲得額を追跡しましょう。",
+      "performance_title": "パフォーマンス改善",
+      "performance_desc": "セッションと残高キャッシングにより、取引サイクルが大幅に高速化しました（約8秒）。",
+      "slippage_title": "スリッページ計算",
+      "slippage_desc": "オーダーブックの深さをチェックし、実際のスプレッドを計算します。スプレッドが広すぎる場合はUIで明確に通知されます。",
+      "fixes_title": "バグ修正",
+      "fixes_desc": "よりスムーズな取引体験のためにいくつかのバグを修正しました。",
+      "fix_session": "新規セッション開始時にセッションデータが正しくリセットされない問題を修正",
+      "fix_tab_warning": "取引中に誤ってタブを閉じようとした際の警告を追加"
+    },
+    "jan_21": {
+      "language_title": "多言語対応",
+      "language_desc": "o2 Trading Botが日本語、韓国語、簡体字中国語、繁体字中国語に対応しました。設定メニューから言語を切り替えられます。",
+      "leaderboard_title": "コンペティションリーダーボード",
+      "leaderboard_desc": "取引コンペティションでのランキングを追跡できます。リアルタイムのリーダーボード更新で他のトレーダーとの順位を確認しましょう。"
+    },
+    "jan_14": {
+      "tutorials_title": "ビデオチュートリアル",
+      "tutorials_desc": "始めるためのステップバイステップのビデオチュートリアルを追加しました。ストラテジーの設定、リスク管理、取引の最大化について学べます。",
+      "walletconnect_title": "WalletConnect対応",
+      "walletconnect_desc": "WalletConnect対応のウォレットをo2 Trading Botに接続できます。資金へのアクセス方法がより柔軟になりました。",
+      "analytics_title": "取引分析",
+      "analytics_desc": "取引パフォーマンス、取引量履歴、損益トレンドを表示する新しい分析ダッシュボード。"
+    },
+    "jan_12": {
+      "usdt_title": "USDTマーケット",
+      "usdt_desc": "同じ強力な自動化ツールでUSDTマーケットでの取引が可能に。ストラテジーのための市場オプションが増えました。",
+      "export_title": "取引ログのエクスポート",
+      "export_desc": "完全な取引履歴をいつでもダウンロードできます。記録や税務用にログをエクスポートしましょう。",
+      "loss_title": "セッション損失制限",
+      "loss_desc": "セッションごとの最大損失制限を設定して資金を保護します。制限に達すると取引が自動的に一時停止します。"
+    },
+    "jan_04": {
+      "initial_title": "初期リリース",
+      "initial_desc": "o2 Trading Botへようこそ！カスタマイズ可能なストラテジー、リアルタイムモニタリング、ポジションの完全なコントロールでo2取引所での取引を自動化しましょう。"
+    }
+  },
   "trading_console": {
     "order_type_market": "成行",
     "order_type_limit": "指値",
@@ -495,5 +537,9 @@
     "stop_loss_price_info": "現在: ${{currentPrice}}, 平均購入: ${{avgBuyPrice}}, 閾値: ${{threshold}}",
     "stop_loss_selling": "{{amount}} {{symbol}} を成行価格で売却中",
     "balance_info": "{{pair}}: 残高 - {{baseBalance}} {{baseSymbol}}, ${{quoteBalance}}"
+  },
+  "mobile_restriction": {
+    "title": "デスクトップ専用",
+    "message": "o2 Trading Botは大きな画面向けに設計されています。最適な体験のため、デスクトップまたはタブレットからアクセスしてください。"
   }
 }

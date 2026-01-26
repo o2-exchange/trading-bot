@@ -1,0 +1,55 @@
+.mobile-restriction-overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-restriction-overlay {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    padding: 20px;
+  }
+
+  .mobile-restriction-content {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px 32px;
+    text-align: center;
+    max-width: 400px;
+    width: 100%;
+  }
+
+  .mobile-restriction-icon {
+    color: var(--primary);
+    margin-bottom: 20px;
+  }
+
+  .mobile-restriction-icon svg {
+    width: 72px;
+    height: 72px;
+  }
+
+  .mobile-restriction-content h2 {
+    color: var(--foreground);
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 12px 0;
+  }
+
+  .mobile-restriction-content p {
+    color: var(--muted-foreground);
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0;
+  }
+}

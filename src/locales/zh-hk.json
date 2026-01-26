@@ -466,6 +466,48 @@
     "trade_cycles": "交易週期",
     "recent_activity": "最近活動"
   },
+  "release_notes": {
+    "title": "更新日誌",
+    "auto_update_note": "重新整理頁面時應用程式會自動更新。無需任何操作即可保持最新版本。",
+    "jan_26": {
+      "rewards_title": "排行榜獎勵",
+      "rewards_desc": "直接在競賽排行榜上查看您的潛在獎勵。追蹤您的排名和預估收益。",
+      "performance_title": "效能提升",
+      "performance_desc": "工作階段和餘額快取使交易週期大幅優化（約8秒）。",
+      "slippage_title": "滑點計算",
+      "slippage_desc": "現在檢查訂單簿深度並計算實際點差，當點差過大時會有清晰的UI提示。",
+      "fixes_title": "問題修復",
+      "fixes_desc": "我們修復了一些問題，讓您的交易體驗更順暢。",
+      "fix_session": "修復了開始新工作階段時工作階段數據未正確重設的問題",
+      "fix_tab_warning": "新增了交易時意外關閉分頁的警告"
+    },
+    "jan_21": {
+      "language_title": "多語言支援",
+      "language_desc": "o2 Trading Bot現已支援日語、韓語、簡體中文和繁體中文。在設定選單中切換語言。",
+      "leaderboard_title": "競賽排行榜",
+      "leaderboard_desc": "追蹤您在交易競賽中的排名。透過即時排行榜更新，了解您與其他交易者的排名對比。"
+    },
+    "jan_14": {
+      "tutorials_title": "視頻教學",
+      "tutorials_desc": "新增分步視頻教學幫助您入門。了解如何設定策略、管理風險和最大化您的交易。",
+      "walletconnect_title": "WalletConnect支援",
+      "walletconnect_desc": "將任何WalletConnect相容的錢包連接到o2 Trading Bot。存取您的資金更加靈活。",
+      "analytics_title": "交易分析",
+      "analytics_desc": "新的分析儀表板，顯示您的交易表現、交易量歷史和盈虧趨勢。"
+    },
+    "jan_12": {
+      "usdt_title": "USDT市場",
+      "usdt_desc": "使用同樣強大的自動化工具在USDT市場交易。為您的策略提供更多市場選擇。",
+      "export_title": "匯出交易日誌",
+      "export_desc": "隨時下載您的完整交易紀錄。匯出日誌用於存檔或稅務用途。",
+      "loss_title": "工作階段損失限制",
+      "loss_desc": "設定每個工作階段的最大損失限制以保護您的資金。達到限制時交易會自動暫停。"
+    },
+    "jan_04": {
+      "initial_title": "首次發佈",
+      "initial_desc": "歡迎使用o2 Trading Bot！透過可自訂的策略、即時監控和對倉位的完全控制，自動化您在o2交易所的交易。"
+    }
+  },
   "trading_console": {
     "order_type_market": "市價",
     "order_type_limit": "限價",
@@ -495,5 +537,9 @@
     "stop_loss_price_info": "當前: ${{currentPrice}}, 平均買入: ${{avgBuyPrice}}, 閾值: ${{threshold}}",
     "stop_loss_selling": "正在以市價賣出 {{amount}} {{symbol}}",
     "balance_info": "{{pair}}: 餘額 - {{baseBalance}} {{baseSymbol}}, ${{quoteBalance}}"
+  },
+  "mobile_restriction": {
+    "title": "僅限桌面端",
+    "message": "o2 Trading Bot專為大螢幕設計。請使用桌面或平板裝置存取以獲得最佳體驗。"
   }
 }
