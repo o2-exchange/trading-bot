@@ -94,10 +94,12 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
           </button>
         </div>
 
-        {leaderboardData?.rewardPool && (
+        {(leaderboardData?.rewardPool || (leaderboardData?.prizePool?.milestones && leaderboardData.prizePool.milestones.length > 0)) && (
           <div className="leaderboard-reward-info">
             <span className="reward-label">{t('leaderboard.reward_pool')}</span>
-            <span className="reward-value">${leaderboardData.rewardPool}</span>
+            <span className="reward-value">
+              ${leaderboardData?.rewardPool || leaderboardData?.prizePool?.milestones[leaderboardData?.prizePool?.milestoneIndex >= 0 ? leaderboardData.prizePool.milestoneIndex : 0]?.rewardPool || '0'}
+            </span>
           </div>
         )}
 
@@ -147,8 +149,8 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
                       )}
                     </td>
                     <td className="prize-cell">
-                      {leaderboardData?.prizePool?.[item.rank]
-                        ? `$${leaderboardData.prizePool[item.rank]}`
+                      {leaderboardData?.prizePool?.rewards?.[item.rank]
+                        ? `$${leaderboardData.prizePool.rewards[item.rank]}`
                         : '-'}
                     </td>
                     <td className="address-cell" title={item.traderId}>

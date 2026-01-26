@@ -15,9 +15,31 @@ export interface Competition {
   }
   totalTraders: number
   totalVolume: string
-  rewardPool: string
+  /** @deprecated Use prizePool.milestones from LeaderboardResponse instead. Kept for backward compatibility. */
+  rewardPool?: string
   startDate: string
   endDate: string | null
+}
+
+export interface Milestone {
+  /** Target volume threshold in string format with 9 decimals */
+  targetVolume: string
+  /** Reward pool amount for this milestone in string format with no decimals */
+  rewardPool: string
+  /** Reward multiplier in basis points where 10000 = 1.0x */
+  multiplier: string
+}
+
+export interface PrizePoolSchema {
+  /** Rank-based reward mapping (rank as string -> reward amount as string) */
+  rewards: Record<string, string>
+  /** Volume milestone configurations ordered by targetVolume ascending */
+  milestones: Milestone[]
+}
+
+export interface FormattedPrizePool extends PrizePoolSchema {
+  /** Index of the currently active milestone based on total volume */
+  milestoneIndex: number
 }
 
 export interface CompetitionListResponse {
@@ -63,8 +85,9 @@ export interface LeaderboardResponse {
   items: LeaderboardItem[]
   totalTraders: string
   totalVolume: string
-  prizePool: Record<string, string>
-  rewardPool: string
+  prizePool: FormattedPrizePool
+  /** @deprecated Use prizePool.milestones instead. Kept for backward compatibility. */
+  rewardPool?: string
   currentUser: LeaderboardItem | null
   competitionId: string
   title: string
@@ -87,8 +110,5 @@ export interface LeaderboardResponse {
   lottery?: LotteryInfo
   specialPositions?: Record<string, SpecialPosition>
   marketBoosts?: Record<string, number>
-  rewardMultiplier?: number
-  rewardPoolMultiplied?: boolean
-  rewardPoolMinVolume?: string
 }
 
