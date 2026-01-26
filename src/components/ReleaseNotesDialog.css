@@ -34,9 +34,12 @@
 }
 
 .release-notes-header .current-version {
-  color: var(--muted-foreground);
-  font-size: 14px;
+  color: #3b82f6;
+  font-size: 13px;
   font-weight: 500;
+  padding: 4px 10px;
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: 12px;
 }
 
 .release-notes-header .close-button {
@@ -175,8 +178,8 @@
   display: flex;
   justify-content: flex-end;
   padding: 14px 20px;
-  border-top: 1px solid var(--border);
-  background: var(--background);
+  border-top: 1px solid rgba(59, 130, 246, 0.2);
+  background: var(--card);
 }
 
 .release-notes-footer .btn-primary {
