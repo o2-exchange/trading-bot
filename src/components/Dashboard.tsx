@@ -11,7 +11,6 @@ import { orderService } from '../services/orderService'
 import { useToast } from './ToastProvider'
 import AuthFlowOverlay from './AuthFlowOverlay'
 import TradingAccount from './TradingAccount'
-import EligibilityCheck from './EligibilityCheck'
 import MarketSelector from './MarketSelector'
 import StrategyConfig from './StrategyConfig'
 import TradeHistory from './TradeHistory'
@@ -44,7 +43,6 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
   const [activeTab, setActiveTab] = useState<'dashboard' | 'trades' | 'tutorials'>('dashboard')
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [tradingAccount, setTradingAccount] = useState<any>(null)
-  const [isEligible, setIsEligible] = useState<boolean | null>(null)
   const [isTrading, setIsTrading] = useState(false)
   const [hasResumableSession, setHasResumableSession] = useState(false)
   const [markets, setMarkets] = useState<any[]>([])
@@ -71,7 +69,6 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
       setAuthState('idle')
       setWalletAddress(null)
       setTradingAccount(null)
-      setIsEligible(null)
       setBalances(null)
       setHasResumableSession(false)
       // DON'T reset auth flow service here - wagmi can briefly report disconnected
@@ -164,8 +161,6 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     const unsubscribe = authFlowService.subscribe((state) => {
       if (state.state === 'ready') {
         loadData()
-        // Update eligibility from auth flow state
-        setIsEligible(state.isWhitelisted ?? false)
       }
     })
 
@@ -173,7 +168,6 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     const currentState = authFlowService.getState()
     if (currentState.state === 'ready') {
       loadData()
-      setIsEligible(currentState.isWhitelisted ?? false)
     }
 
     return unsubscribe
@@ -454,17 +448,8 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
     setAuthReady(true)
   }, [])
 
-  const handleAuthStateChange = useCallback((state: string, isWhitelisted: boolean | null) => {
+  const handleAuthStateChange = useCallback((state: string, _isWhitelisted: boolean | null) => {
     setAuthState(state)
-    if (isWhitelisted !== null) {
-      setIsEligible(isWhitelisted)
-    }
-    // If user dismissed the invitation/queue dialog, treat as "ready but not whitelisted"
-    // This allows them to browse the dashboard without seeing "Setting up..." forever
-    if (state === 'dismissed') {
-      setAuthReady(true)
-      setIsEligible(false)
-    }
   }, [])
 
   return (
@@ -561,14 +546,7 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                 <TradingAccount />
 
                 <div className="trading-controls">
-                  {isWalletConnected && isEligible === false && (
-                    <div className="not-whitelisted-banner">
-                      <span className="not-whitelisted-text">
-                        {t('trading.not_whitelisted')}
-                      </span>
-                    </div>
-                  )}
-                  {isWalletConnected && showStrategyRecommendation && isEligible !== false && authReady && (
+                  {isWalletConnected && showStrategyRecommendation && authReady && (
                     <div className="strategy-recommendation-banner">
                       <span className="recommendation-text">
                         {t('trading.no_active_strategy')}
@@ -607,14 +585,12 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                         <button
                           onClick={() => handleStartTrading(true)}
                           className="start-button resume-button"
-                          disabled={isEligible === false}
                         >
                           {t('trading.resume_session')}
                         </button>
                         <button
                           onClick={handleNewSessionClick}
                           className="start-button new-session-button"
-                          disabled={isEligible === false}
                         >
                           {t('trading.new_session')}
                         </button>
@@ -623,7 +599,6 @@ export default function Dashboard({ isWalletConnected, onDisconnect }: Dashboard
                       <button
                         onClick={() => handleStartTrading(false)}
                         className="start-button"
-                        disabled={isEligible === false}
                       >
                         {t('trading.start_trading')}
                       </button>

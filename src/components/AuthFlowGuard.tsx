@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react'
 import { authFlowService, AuthFlowState } from '../services/authFlowService'
 import { walletService } from '../services/walletService'
 import TermsOfUseDialog from './TermsOfUseDialog'
-import AccessQueueDialog from './AccessQueueDialog'
-import InvitationCodeDialog from './InvitationCodeDialog'
 import SignMessageDialog from './SignMessageDialog'
 import WelcomeModal from './WelcomeModal'
 import { useToast } from './ToastProvider'
@@ -20,7 +18,7 @@ export default function AuthFlowGuard({ children }: AuthFlowGuardProps) {
   useEffect(() => {
     let mounted = true
     let hasStarted = false
-    
+
     // Subscribe to auth flow state changes
     const unsubscribe = authFlowService.subscribe((context) => {
       if (mounted) {
@@ -33,14 +31,14 @@ export default function AuthFlowGuard({ children }: AuthFlowGuardProps) {
     // The startFlow method will check for active session first
     const currentState = authFlowService.getState()
     console.log('AuthFlowGuard mounted, current state:', currentState.state)
-    
+
     // If already ready, don't restart the flow
     if (currentState.state === 'ready') {
       console.log('Auth flow already ready')
       setAuthState(currentState)
       return unsubscribe
     }
-    
+
     // Only start flow once, even if component remounts (React strict mode)
     if (currentState.state === 'idle' && !hasStarted) {
       hasStarted = true
@@ -74,17 +72,6 @@ export default function AuthFlowGuard({ children }: AuthFlowGuardProps) {
     }
   }
 
-  const handleAccessQueueClose = () => {
-    // Keep dialog open if user is in queue
-    if (authState.state === 'displayingAccessQueue') {
-      return
-    }
-  }
-
-  const handleInvitationClose = () => {
-    // If no invitation code, user can skip (will remain in queue)
-  }
-
   const handleSignMessageClose = () => {
     // User cancelled - this will set state to signatureDeclined
   }
@@ -114,7 +101,7 @@ export default function AuthFlowGuard({ children }: AuthFlowGuardProps) {
     authState.state === 'idle' ||
     authState.state === 'checkingSituation' ||
     authState.state === 'checkingTerms' ||
-    authState.state === 'verifyingAccessQueue' ||
+    authState.state === 'whitelisting' ||
     authState.state === 'creatingSession'
 
   if (isLoading) {
@@ -137,7 +124,9 @@ export default function AuthFlowGuard({ children }: AuthFlowGuardProps) {
           animation: 'spin 1s linear infinite'
         }} />
         <p style={{ color: 'var(--muted-foreground)', fontSize: '14px' }}>
-          {authState.state === 'idle' ? 'Connecting...' : 'Setting up trading session...'}
+          {authState.state === 'idle' ? 'Connecting...' :
+           authState.state === 'whitelisting' ? 'Setting up your account...' :
+           'Setting up trading session...'}
         </p>
         <style>{`
           @keyframes spin {
@@ -269,23 +258,12 @@ export default function AuthFlowGuard({ children }: AuthFlowGuardProps) {
     )
   }
 
-  // Dialog states - show dialogs with loading background
+  // Terms dialog state
   return (
     <>
       <TermsOfUseDialog
         isOpen={authState.state === 'awaitingTerms'}
         onClose={handleTermsClose}
-      />
-      <AccessQueueDialog
-        isOpen={authState.state === 'displayingAccessQueue'}
-        queuePosition={authState.accessQueue.queuePosition}
-        email={authState.accessQueue.email}
-        telegram={authState.accessQueue.telegram}
-        onClose={handleAccessQueueClose}
-      />
-      <InvitationCodeDialog
-        isOpen={authState.state === 'awaitingInvitation'}
-        onClose={handleInvitationClose}
       />
 
       {/* Background while dialogs are shown */}

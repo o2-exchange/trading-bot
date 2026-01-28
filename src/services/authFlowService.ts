@@ -14,9 +14,7 @@ export type AuthFlowState =
   | 'checkingSituation'
   | 'checkingTerms'
   | 'awaitingTerms'
-  | 'verifyingAccessQueue'
-  | 'displayingAccessQueue'
-  | 'awaitingInvitation'
+  | 'whitelisting'
   | 'awaitingSignature'
   | 'signatureDeclined'
   | 'creatingSession'
@@ -30,12 +28,6 @@ export interface AuthFlowContext {
   isWhitelisted: boolean | null
   termsAccepted: boolean
   tradingAccount: TradingAccount | null
-  accessQueue: {
-    queuePosition: number | null
-    email: string | null
-    telegram: string | null
-  }
-  invitationCode: string | null
   sessionId: string | null
   pendingSession: {
     contractIds: string[]
@@ -49,12 +41,6 @@ class AuthFlowService {
     isWhitelisted: null,
     termsAccepted: false,
     tradingAccount: null,
-    accessQueue: {
-      queuePosition: null,
-      email: null,
-      telegram: null,
-    },
-    invitationCode: null,
     sessionId: null,
     pendingSession: null,
   }
@@ -157,13 +143,6 @@ class AuthFlowService {
           sessionId: activeSession.id,
           isWhitelisted: true, // Assume true - user has valid session so must be whitelisted
           error: null,
-        })
-
-        // Run eligibility check in background (non-blocking) for dashboard display
-        // This will update the state if for some reason they're no longer whitelisted
-        this.checkEligibilityStatus(normalizedAddress).catch(() => {
-          // Ignore errors - this is purely informational for dashboard
-          console.log('[AuthFlow] Background eligibility check failed (non-critical)')
         })
 
         return
@@ -282,60 +261,6 @@ class AuthFlowService {
     }
   }
 
-  private async checkEligibilityStatus(ownerAddress: string): Promise<void> {
-    try {
-      const normalizedAddress = ownerAddress.toLowerCase()
-
-      // Get trading account (should be cached or fetch if needed)
-      let tradingAccount = this.context.tradingAccount ||
-        await tradingAccountService.getTradingAccount(normalizedAddress)
-
-      if (!tradingAccount) {
-        // Can't check without trading account - try to get or create it
-        tradingAccount = await tradingAccountService.getOrCreateTradingAccount(normalizedAddress)
-        this.setState({ tradingAccount })
-      }
-
-      // Fetch markets if needed (uses cache)
-      await marketService.fetchMarkets()
-
-      // Check on-chain whitelist status first (more reliable)
-      const booksWhitelistId = marketService.getBooksWhitelistId()
-      let isWhitelisted = false
-
-      if (booksWhitelistId) {
-        try {
-          isWhitelisted = await whitelistService.checkWhitelistStatus(
-            tradingAccount.id,
-            booksWhitelistId
-          )
-        } catch (error) {
-          console.warn('Failed to check on-chain whitelist status', error)
-          // Fallback to API eligibility check
-        }
-      }
-
-      // If not whitelisted on-chain, check API eligibility (for invitation codes, etc.)
-      if (!isWhitelisted) {
-        const eligibility = await eligibilityService.checkEligibility(
-          normalizedAddress,
-          tradingAccount.id
-        )
-        isWhitelisted = eligibility.isEligible && eligibility.isWhitelisted
-      }
-
-      // Update state with eligibility status
-      this.setState({ isWhitelisted })
-    } catch (error) {
-      console.warn('[AuthFlow] Failed to check eligibility status (non-critical):', error)
-      // Don't throw - this is a background check and shouldn't block the flow
-      // If we have an active session, assume user is whitelisted for dashboard display
-      if (this.context.sessionId) {
-        this.setState({ isWhitelisted: true })
-      }
-    }
-  }
-
   private async checkSituation(): Promise<void> {
     try {
       const wallet = walletService.getConnectedWallet()
@@ -350,10 +275,9 @@ class AuthFlowService {
       this.setState({ tradingAccount })
 
       // Fetch markets to get books_whitelist_id (uses cache if available)
-      // fetchMarkets will automatically fetch from API if books_whitelist_id is missing
       await marketService.fetchMarkets()
 
-      // Check on-chain whitelist status first (more reliable)
+      // Check on-chain whitelist status
       let booksWhitelistId = marketService.getBooksWhitelistId()
 
       // If booksWhitelistId is still null, force refresh from API
@@ -377,33 +301,14 @@ class AuthFlowService {
           console.log('[AuthFlow] On-chain whitelist check result:', isWhitelisted)
         } catch (error) {
           console.warn('[AuthFlow] Failed to check on-chain whitelist status:', error)
-          // Fallback to API eligibility check
         }
       } else {
         console.warn('[AuthFlow] No booksWhitelistId available, skipping on-chain check')
       }
 
-      // If not whitelisted on-chain, check API eligibility (for invitation codes, etc.)
-      if (!isWhitelisted) {
-        console.log('[AuthFlow] Checking API eligibility as fallback...')
-        const eligibility = await eligibilityService.checkEligibility(
-          normalizedAddress,
-          tradingAccount.id
-        )
-        console.log('[AuthFlow] API eligibility result:', eligibility)
-        isWhitelisted = eligibility.isEligible && eligibility.isWhitelisted
-      }
-
       this.setState({ isWhitelisted })
 
-      // If whitelisted, skip to session creation (after terms check)
-      if (isWhitelisted) {
-        // Check terms first
-        await this.checkTerms()
-        return
-      }
-
-      // Not whitelisted, need to go through terms and access queue
+      // Proceed to terms check (whitelist API call happens after terms if needed)
       await this.checkTerms()
     } catch (error: any) {
       this.setState({
@@ -428,12 +333,7 @@ class AuthFlowService {
 
       if (accepted) {
         this.setState({ termsAccepted: true })
-        // Whitelisted users skip verifyAccessQueue entirely
-        if (this.context.isWhitelisted) {
-          await this.createSession()
-        } else {
-          await this.verifyAccessQueue()
-        }
+        await this.ensureWhitelistedAndCreateSession()
       } else {
         this.setState({ state: 'awaitingTerms', termsAccepted: false })
       }
@@ -457,12 +357,7 @@ class AuthFlowService {
       termsStore.setAcceptance(normalizedAddress, true)
 
       this.setState({ termsAccepted: true })
-      // Whitelisted users skip verifyAccessQueue entirely
-      if (this.context.isWhitelisted) {
-        await this.createSession()
-      } else {
-        await this.verifyAccessQueue()
-      }
+      await this.ensureWhitelistedAndCreateSession()
     } catch (error: any) {
       this.setState({
         state: 'error',
@@ -471,119 +366,51 @@ class AuthFlowService {
     }
   }
 
-  private async verifyAccessQueue(): Promise<void> {
+  /**
+   * Ensure the trading account is whitelisted, then proceed to session creation.
+   * If not whitelisted on-chain, call the /whitelist API endpoint.
+   */
+  private async ensureWhitelistedAndCreateSession(): Promise<void> {
     try {
-      // Skip if already whitelisted (shouldn't reach here, but safety check)
+      // If already whitelisted on-chain, skip API call
       if (this.context.isWhitelisted) {
+        console.log('[AuthFlow] Already whitelisted on-chain, proceeding to session creation')
         await this.createSession()
         return
       }
 
-      this.setState({ state: 'verifyingAccessQueue' })
+      // Not whitelisted on-chain, call the whitelist API
+      this.setState({ state: 'whitelisting' })
 
-      const wallet = walletService.getConnectedWallet()
-      if (!wallet) {
-        throw new Error('No wallet connected')
+      const tradingAccount = this.context.tradingAccount
+      if (!tradingAccount) {
+        throw new Error('Trading account not found')
       }
 
-      const normalizedAddress = wallet.address.toLowerCase()
-      
-      // Use cached trading account or fetch if not available
-      const tradingAccount = this.context.tradingAccount || 
-        await tradingAccountService.getOrCreateTradingAccount(normalizedAddress)
-      
-      // Update cache if we had to fetch it
-      if (!this.context.tradingAccount) {
-        this.setState({ tradingAccount })
-      }
+      console.log('[AuthFlow] Calling whitelist API for trading account:', tradingAccount.id)
 
-      // Check access queue via eligibility service
-      const eligibility = await eligibilityService.checkEligibility(
-        normalizedAddress,
-        tradingAccount.id
-      )
+      try {
+        const result = await eligibilityService.whitelistTradingAccount(tradingAccount.id)
+        console.log('[AuthFlow] Whitelist API result:', result)
 
-      // If eligible, proceed to session creation
-      if (eligibility.isEligible) {
-        // Check for invitation code from URL
-        const urlInvite = eligibilityService.getInviteCodeFromUrl()
-        if (urlInvite) {
-          this.setState({ invitationCode: urlInvite })
-          // Invitation code will be handled in createSession if needed
+        if (result.success || result.alreadyWhitelisted) {
+          this.setState({ isWhitelisted: true })
+          await this.createSession()
+        } else {
+          throw new Error('Failed to whitelist trading account')
         }
+      } catch (whitelistError: any) {
+        console.error('[AuthFlow] Whitelist API error:', whitelistError)
+        // If whitelist fails, still try to create session
+        // The on-chain whitelist might have been done separately
+        console.log('[AuthFlow] Whitelist API failed, attempting session creation anyway...')
         await this.createSession()
-        return
-      }
-
-      // Not eligible - show access queue or invitation dialog
-      if (eligibility.waitlistPosition !== undefined && eligibility.waitlistPosition !== null) {
-        this.setState({
-          state: 'displayingAccessQueue',
-          accessQueue: {
-            queuePosition: eligibility.waitlistPosition,
-            email: null,
-            telegram: null,
-          },
-        })
-      } else {
-        this.setState({ state: 'awaitingInvitation' })
       }
     } catch (error: any) {
       this.setState({
         state: 'error',
-        error: error.message || 'Failed to verify access queue',
+        error: error.message || 'Failed to whitelist trading account',
       })
-    }
-  }
-
-  async assignInvitationCode(code: string): Promise<void> {
-    try {
-      this.setState({ state: 'verifyingAccessQueue', invitationCode: code })
-
-      const wallet = walletService.getConnectedWallet()
-      if (!wallet) {
-        throw new Error('No wallet connected')
-      }
-
-      const normalizedAddress = wallet.address.toLowerCase()
-      
-      // Use cached trading account or fetch if not available
-      const tradingAccount = this.context.tradingAccount || 
-        await tradingAccountService.getOrCreateTradingAccount(normalizedAddress)
-      
-      // Update cache if we had to fetch it
-      if (!this.context.tradingAccount) {
-        this.setState({ tradingAccount })
-      }
-
-      // Assign invitation code via eligibility service
-      const eligibility = await eligibilityService.checkEligibility(
-        normalizedAddress,
-        tradingAccount.id,
-        code
-      )
-
-      if (eligibility.isEligible) {
-        // Set isWhitelisted from eligibility response before creating session
-        this.setState({ isWhitelisted: eligibility.isWhitelisted })
-        await this.createSession()
-      } else {
-        // Set state AND throw error so the UI can catch it and show error toast
-        const errorMessage = eligibility.error || 'Invalid invitation code'
-        this.setState({
-          state: 'awaitingInvitation',
-          error: errorMessage,
-        })
-        throw new Error(errorMessage)
-      }
-    } catch (error: any) {
-      // Update state with error
-      this.setState({
-        state: 'awaitingInvitation',
-        error: error.message || 'Failed to assign invitation code',
-      })
-      // Re-throw so the UI can handle it (show error toast, keep dialog open)
-      throw error
     }
   }
 
@@ -601,12 +428,6 @@ class AuthFlowService {
       // Get all markets for session contract IDs (uses cache)
       console.log('[AuthFlow] Fetching markets...')
       const markets = await marketService.fetchMarkets()
-      // Exclude contract ID that O2 doesn't include (from a market not in O2's whitelist)
-      // Use markets in their original order (O2 doesn't sort them)
-      // const EXCLUDED_CONTRACT_ID = '0xca78cbd896cd09f104cd32448e0ef155dace8a0a9ea21ad5f4f9435800038b9b'
-      // const marketContractIds = markets
-      //   .filter((m) => m.contract_id.toLowerCase() !== EXCLUDED_CONTRACT_ID.toLowerCase())
-      //   .map((m) => m.contract_id)
       const marketContractIds = markets.map((m) => m.contract_id)
       // Include accounts_registry_id at the end if available (matching O2's pattern)
       const accountsRegistryId = marketService.getAccountsRegistryId()
@@ -614,8 +435,6 @@ class AuthFlowService {
         ? [...marketContractIds, accountsRegistryId]
         : marketContractIds
       console.log('[AuthFlow] Contract IDs (markets + accounts_registry):', contractIds.length)
-
-      // Password already set at the start of startFlow() - no need to set again
 
       // Use cached trading account or fetch if not available
       const tradingAccount = this.context.tradingAccount ||
@@ -781,12 +600,6 @@ class AuthFlowService {
       isWhitelisted: null,
       termsAccepted: false,
       tradingAccount: null,
-      accessQueue: {
-        queuePosition: null,
-        email: null,
-        telegram: null,
-      },
-      invitationCode: null,
       sessionId: null,
       pendingSession: null,
     })

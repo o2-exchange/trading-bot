@@ -3,8 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { authFlowService } from '../services/authFlowService'
 import { walletService } from '../services/walletService'
 import TermsOfUseDialog from './TermsOfUseDialog'
-import AccessQueueDialog from './AccessQueueDialog'
-import InvitationCodeDialog from './InvitationCodeDialog'
 import SignMessageDialog from './SignMessageDialog'
 import WelcomeModal from './WelcomeModal'
 import { useToast } from './ToastProvider'
@@ -17,7 +15,6 @@ interface AuthFlowOverlayProps {
 export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: AuthFlowOverlayProps) {
   const { t } = useTranslation()
   const [authState, setAuthState] = useState(authFlowService.getState())
-  const [dismissedDialogs, setDismissedDialogs] = useState<Set<string>>(new Set())
   const { addToast } = useToast()
 
   useEffect(() => {
@@ -79,11 +76,11 @@ export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: Auth
     return () => {
       mounted = false
       unsubscribe()
-      // Only abort if the flow is in a "working" state (checking, creating, verifying)
+      // Only abort if the flow is in a "working" state (checking, creating, whitelisting)
       // Don't abort if flow is in a "display" state (awaiting user action) or already ready
       // This prevents React Strict Mode double-mounting from killing active flows
       const state = authFlowService.getState().state
-      const interruptibleStates = ['checkingSituation', 'checkingTerms', 'verifyingAccessQueue', 'creatingSession']
+      const interruptibleStates = ['checkingSituation', 'checkingTerms', 'whitelisting', 'creatingSession']
       if (interruptibleStates.includes(state)) {
         authFlowService.abort()
       }
@@ -104,29 +101,9 @@ export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: Auth
     }
   }
 
-  const handleAccessQueueClose = () => {
-    // User can close and browse - just can't trade
-    // Mark as dismissed so it doesn't reopen
-    setDismissedDialogs(prev => new Set(prev).add('accessQueue'))
-    // Notify parent that auth is "done" for browsing purposes (not whitelisted)
-    onAuthStateChange?.('dismissed', false)
-  }
-
-  const handleInvitationClose = () => {
-    // User can close and browse - invitation is optional for browsing
-    // Mark as dismissed so it doesn't reopen
-    setDismissedDialogs(prev => new Set(prev).add('invitation'))
-    // Notify parent that auth is "done" for browsing purposes (not whitelisted)
-    onAuthStateChange?.('dismissed', false)
-  }
-
   const handleSignMessageClose = () => {
     // User cancelled the signature - this is handled by the dialog itself
   }
-
-  // Check if dialogs should be shown (not dismissed by user)
-  const showAccessQueueDialog = authState.state === 'displayingAccessQueue' && !dismissedDialogs.has('accessQueue')
-  const showInvitationDialog = authState.state === 'awaitingInvitation' && !dismissedDialogs.has('invitation')
 
   // Don't render anything for loading or error states - let them be handled elsewhere
   // Only render dialog overlays when needed
@@ -135,17 +112,6 @@ export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: Auth
       <TermsOfUseDialog
         isOpen={authState.state === 'awaitingTerms'}
         onClose={handleTermsClose}
-      />
-      <AccessQueueDialog
-        isOpen={showAccessQueueDialog}
-        queuePosition={authState.accessQueue.queuePosition}
-        email={authState.accessQueue.email}
-        telegram={authState.accessQueue.telegram}
-        onClose={handleAccessQueueClose}
-      />
-      <InvitationCodeDialog
-        isOpen={showInvitationDialog}
-        onClose={handleInvitationClose}
       />
       <SignMessageDialog
         isOpen={authState.state === 'awaitingSignature'}
