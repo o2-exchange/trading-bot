@@ -16,7 +16,7 @@ const tutorials: Tutorial[] = [
     id: 'o2-bot-intro',
     title: 'Getting Started with o2 Trading Bot',
     description: 'Your new trading companion! Connect your wallet, create or import a strategy, pick your market pairs, and hit Start Trading. Access Simple, Volume Max, and Profit-Taking presets, or build a fully custom strategy with all the variables your way.',
-    youtubeId: '4XYdBMaBwow'
+    youtubeId: 'tYC0VnqB4Xk'
   }
 ]
 
