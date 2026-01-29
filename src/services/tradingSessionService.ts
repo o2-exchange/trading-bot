@@ -28,7 +28,7 @@ class TradingSessionService {
       status: 'active',
       totalVolume: 0,
       totalFees: 0,
-      realizedPnL: 0,
+      realizedPnL: '0',
       tradeCount: 0,
       buyCount: 0,
       sellCount: 0,
@@ -37,7 +37,7 @@ class TradingSessionService {
       totalSoldQuantity: '0',
       totalBuyValue: 0,
       totalSellValue: 0,
-      unsoldCostBasis: 0,
+      unsoldCostBasis: '0',
       unsoldQuantity: '0',
       trades: [],
       consoleMessages: [],
@@ -260,7 +260,7 @@ class TradingSessionService {
       session.totalSellValue += value
       session.totalSoldQuantity = new Decimal(session.totalSoldQuantity).add(quantityDecimal).toString()
 
-      // NOTE: P&L calculation moved to updateSessionPnL() which is called only when fills are confirmed
+      // NOTE: P&L calculation is done in recordConfirmedFill() which is called only when fills are confirmed
       // This prevents counting P&L for orders that get cancelled due to timeout
     }
 
@@ -269,46 +269,6 @@ class TradingSessionService {
 
     this.notifyListeners(session)
     return session
-  }
-
-  /**
-   * Update session P&L when a sell order is confirmed filled
-   * This should only be called when we know the order has actually filled
-   * Includes fee deduction (0.01% buy + 0.01% sell = 0.02% round-trip)
-   */
-  async updateSessionPnL(
-    sessionId: string,
-    sellPrice: string,
-    quantity: string
-  ): Promise<void> {
-    const session = await db.tradingSessions.get(sessionId)
-    if (!session) return
-
-    if (session.averageBuyPrice !== '0') {
-      const priceDecimal = new Decimal(sellPrice)
-      const quantityDecimal = new Decimal(quantity)
-      const avgBuy = new Decimal(session.averageBuyPrice)
-
-      // Calculate gross P&L
-      const grossPnL = priceDecimal.minus(avgBuy).mul(quantityDecimal)
-
-      // Calculate fees: 0.01% on buy + 0.01% on sell = 0.02% total round-trip
-      const FEE_RATE = new Decimal('0.0001') // 0.01%
-      const buyValue = avgBuy.mul(quantityDecimal)
-      const sellValue = priceDecimal.mul(quantityDecimal)
-      const buyFee = buyValue.mul(FEE_RATE)
-      const sellFee = sellValue.mul(FEE_RATE)
-      const totalFees = buyFee.plus(sellFee)
-
-      // Net P&L = Gross P&L - Fees
-      const netPnL = grossPnL.minus(totalFees).toNumber()
-
-      session.realizedPnL += netPnL
-      session.updatedAt = Date.now()
-      await db.tradingSessions.put(session)
-      this.notifyListeners(session)
-      console.log(`[TradingSessionService] Updated session P&L: gross=${grossPnL.toFixed(4)}, fees=${totalFees.toFixed(4)}, net=${netPnL.toFixed(4)} (total: ${session.realizedPnL.toFixed(4)})`)
-    }
   }
 
   /**
@@ -338,55 +298,57 @@ class TradingSessionService {
     const priceDecimal = new Decimal(trade.fillPrice)
     const quantityDecimal = new Decimal(trade.fillQuantity)
     const value = priceDecimal.mul(quantityDecimal).toNumber()
-    const FEE_RATE_DECIMAL = new Decimal('0.0001') // 0.01%
-    const fee = priceDecimal.mul(quantityDecimal).mul(FEE_RATE_DECIMAL).toNumber()
+    const fee = priceDecimal.mul(quantityDecimal).mul(FEE_RATE).toNumber()
 
-    // Calculate PnL contribution for this trade
+    // Calculate PnL contribution for this trade using Decimal for precision
     // IMPORTANT: Buy fee is counted on buy, sell fee is counted on sell
     // This avoids double-counting fees on round-trip trades
-    let pnlContribution = 0
+    let pnlContributionDecimal = new Decimal(0)
     let weightedAvgBuyPrice: string | undefined
     let matchedQuantity: string | undefined
 
     if (trade.side === 'Buy') {
       // Buy order: PnL = -buyFee (count fee immediately)
-      pnlContribution = -fee
-      console.log(`[TradingSessionService] Buy fill PnL: -$${fee.toFixed(4)} (fee)`)
+      const buyFeeDecimal = new Decimal(fee)
+      pnlContributionDecimal = buyFeeDecimal.neg()
+      console.log(`[TradingSessionService] Buy fill PnL: -$${buyFeeDecimal.toFixed(8)} (fee)`)
     } else {
       // Sell order: calculate P&L using unsold inventory cost basis
-      const sellFee = fee
+      const sellFeeDecimal = new Decimal(fee)
       const sellQty = quantityDecimal
 
       // Use unsoldQuantity (only inventory that hasn't been sold yet)
       const unsoldQty = new Decimal(session.unsoldQuantity || '0')
+      const unsoldCostBasisDecimal = new Decimal(session.unsoldCostBasis || '0')
 
-      if (unsoldQty.gt(0) && session.unsoldCostBasis > 0) {
+      if (unsoldQty.gt(0) && unsoldCostBasisDecimal.gt(0)) {
         // How much of this sell has a matching buy?
         const matchedQty = Decimal.min(sellQty, unsoldQty)
 
         // Calculate avg cost basis of unsold inventory
-        const avgCostBasis = new Decimal(session.unsoldCostBasis).div(unsoldQty)
+        const avgCostBasis = unsoldCostBasisDecimal.div(unsoldQty)
 
         // Calculate P&L only on matched quantity
         const grossPnL = priceDecimal.minus(avgCostBasis).mul(matchedQty)
 
         // Fee is on entire sell quantity
-        pnlContribution = grossPnL.toNumber() - sellFee
+        pnlContributionDecimal = grossPnL.minus(sellFeeDecimal)
 
         // Store for debugging
         weightedAvgBuyPrice = avgCostBasis.toString()
         matchedQuantity = matchedQty.toString()
 
-        console.log(`[TradingSessionService] Sell fill PnL: matched=${matchedQty.toString()}, avgCostBasis=$${avgCostBasis.toFixed(4)}, gross=$${grossPnL.toFixed(4)}, sellFee=$${sellFee.toFixed(4)}, net=$${pnlContribution.toFixed(4)}`)
+        console.log(`[TradingSessionService] Sell fill PnL: matched=${matchedQty.toString()}, avgCostBasis=$${avgCostBasis.toFixed(8)}, gross=$${grossPnL.toFixed(8)}, sellFee=$${sellFeeDecimal.toFixed(8)}, net=$${pnlContributionDecimal.toFixed(8)}`)
       } else {
         // No unsold buys in session: only count sellFee
-        pnlContribution = -sellFee
-        console.log(`[TradingSessionService] Sell fill PnL: -$${sellFee.toFixed(4)} (no matching buys)`)
+        pnlContributionDecimal = sellFeeDecimal.neg()
+        console.log(`[TradingSessionService] Sell fill PnL: -$${sellFeeDecimal.toFixed(8)} (no matching buys)`)
       }
     }
 
-    // Update session's realized P&L
-    session.realizedPnL += pnlContribution
+    // Update session's realized P&L using Decimal for precision
+    const currentPnL = new Decimal(session.realizedPnL || '0')
+    session.realizedPnL = currentPnL.plus(pnlContributionDecimal).toString()
 
     const sessionTrade: TradingSessionTrade = {
       orderId: trade.orderId,
@@ -399,7 +361,7 @@ class TradingSessionService {
       marketPair: trade.marketPair,
       weightedAvgBuyPrice,
       matchedQuantity,
-      pnlContribution,
+      pnlContribution: pnlContributionDecimal.toNumber(),
     }
 
     // Update session metrics - only increment tradeCount on confirmed fill
@@ -420,24 +382,28 @@ class TradingSessionService {
       session.averageBuyPrice = newQuantity.gt(0) ? newTotal.div(newQuantity).toString() : '0'
 
       // Add to unsold inventory (this is what's used for P&L calculation)
-      session.unsoldCostBasis += value
+      // Use Decimal for precision
+      const currentCostBasis = new Decimal(session.unsoldCostBasis || '0')
+      session.unsoldCostBasis = currentCostBasis.plus(value).toString()
       session.unsoldQuantity = new Decimal(session.unsoldQuantity || '0').add(quantityDecimal).toString()
     } else {
       session.sellCount++
       session.totalSellValue += value
       session.totalSoldQuantity = new Decimal(session.totalSoldQuantity).add(quantityDecimal).toString()
 
-      // Reduce unsold inventory proportionally
+      // Reduce unsold inventory proportionally using Decimal for precision
       const unsoldQty = new Decimal(session.unsoldQuantity || '0')
       if (unsoldQty.gt(0)) {
         const matchedQty = Decimal.min(quantityDecimal, unsoldQty)
-        const soldRatio = matchedQty.div(unsoldQty).toNumber()
+        const soldRatio = matchedQty.div(unsoldQty)
 
         // Reduce cost basis proportionally to quantity sold
-        session.unsoldCostBasis *= (1 - soldRatio)
+        const currentCostBasis = new Decimal(session.unsoldCostBasis || '0')
+        const remainingRatio = new Decimal(1).minus(soldRatio)
+        session.unsoldCostBasis = currentCostBasis.mul(remainingRatio).toString()
         session.unsoldQuantity = unsoldQty.minus(matchedQty).toString()
 
-        console.log(`[TradingSessionService] Updated unsold inventory: qty=${session.unsoldQuantity}, costBasis=$${session.unsoldCostBasis.toFixed(4)}`)
+        console.log(`[TradingSessionService] Updated unsold inventory: qty=${session.unsoldQuantity}, costBasis=$${new Decimal(session.unsoldCostBasis).toFixed(8)}`)
       }
     }
 
@@ -445,7 +411,7 @@ class TradingSessionService {
     await db.tradingSessions.put(session)
 
     this.notifyListeners(session)
-    console.log(`[TradingSessionService] Recorded confirmed fill: ${trade.side} ${trade.fillQuantity} @ $${trade.fillPrice} (trade #${session.tradeCount}, session PnL: $${session.realizedPnL.toFixed(4)})`)
+    console.log(`[TradingSessionService] Recorded confirmed fill: ${trade.side} ${trade.fillQuantity} @ $${trade.fillPrice} (trade #${session.tradeCount}, session PnL: $${new Decimal(session.realizedPnL).toFixed(8)})`)
     return session
   }
 
@@ -579,6 +545,68 @@ class TradingSessionService {
       this.currentSessionId = null
       this.notifyListeners(null)
     }
+  }
+
+  /**
+   * Calculate unrealized PnL for a session based on current market price.
+   * Unrealized PnL = (currentPrice - avgCostBasis) * unsoldQuantity
+   */
+  calculateUnrealizedPnL(session: TradingSession, currentMarketPrice: Decimal): {
+    unrealizedPnL: Decimal
+    totalPnL: Decimal
+    percentageGain: number
+  } {
+    const unsoldQty = new Decimal(session.unsoldQuantity || '0')
+    const costBasis = new Decimal(session.unsoldCostBasis || '0')
+    const realizedPnL = new Decimal(session.realizedPnL || '0')
+
+    if (unsoldQty.isZero() || costBasis.isZero()) {
+      return {
+        unrealizedPnL: new Decimal(0),
+        totalPnL: realizedPnL,
+        percentageGain: 0
+      }
+    }
+
+    // Calculate average cost per unit
+    const avgCostPerUnit = costBasis.div(unsoldQty)
+
+    // Unrealized P&L = (current price - avg cost) * quantity
+    const unrealizedPnL = currentMarketPrice
+      .minus(avgCostPerUnit)
+      .mul(unsoldQty)
+
+    // Total P&L = realized + unrealized
+    const totalPnL = realizedPnL.plus(unrealizedPnL)
+
+    // Percentage gain on cost basis
+    const percentageGain = costBasis.isZero()
+      ? 0
+      : unrealizedPnL.div(costBasis).mul(100).toNumber()
+
+    return {
+      unrealizedPnL,
+      totalPnL,
+      percentageGain
+    }
+  }
+
+  /**
+   * Update session with current market price for unrealized PnL tracking.
+   */
+  async updateMarketPrice(sessionId: string, marketPrice: Decimal): Promise<void> {
+    const session = await db.tradingSessions.get(sessionId)
+    if (!session) return
+
+    const { unrealizedPnL } = this.calculateUnrealizedPnL(session, marketPrice)
+
+    session.unrealizedPnL = unrealizedPnL.toString()
+    session.lastMarketPrice = marketPrice.toString()
+    session.lastPriceUpdateTime = Date.now()
+    session.updatedAt = Date.now()
+
+    await db.tradingSessions.put(session)
+    this.notifyListeners(session)
   }
 }
 

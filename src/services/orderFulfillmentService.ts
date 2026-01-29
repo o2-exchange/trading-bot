@@ -23,11 +23,38 @@ function roundDownTo3Decimals(quantity: Decimal): Decimal {
 
 /**
  * Scales up a Decimal by a given number of decimals and truncates it
- * according to the maximum precision.
+ * according to the maximum precision or tick size.
+ *
+ * @param amount - Price in human-readable format
+ * @param decimals - Number of decimals for the quote asset
+ * @param maxPrecision - Maximum precision allowed
+ * @param tickSize - Optional tick size string from market config (in human-readable format)
+ * @returns Scaled and truncated price as integer
  */
-function scaleUpAndTruncateToInt(amount: Decimal, decimals: number, maxPrecision: number): Decimal {
+function scaleUpAndTruncateToInt(
+  amount: Decimal,
+  decimals: number,
+  maxPrecision: number,
+  tickSize?: string
+): Decimal {
+  // If tick_size is available, use it for alignment
+  if (tickSize) {
+    const tickSizeDecimal = new Decimal(tickSize)
+    if (!tickSizeDecimal.isZero()) {
+      const tickAlignedPrice = amount.div(tickSizeDecimal).floor().mul(tickSizeDecimal)
+      return tickAlignedPrice.mul(new Decimal(10).pow(decimals)).floor()
+    }
+  }
+
+  // Fallback to max_precision-based truncation
+  const effectivePrecision = maxPrecision !== undefined && maxPrecision >= 0 ? maxPrecision : decimals
   const priceInt = amount.mul(new Decimal(10).pow(decimals))
-  const truncateFactor = new Decimal(10).pow(decimals - maxPrecision)
+  const truncateFactor = new Decimal(10).pow(decimals - effectivePrecision)
+
+  if (truncateFactor.lte(1)) {
+    return priceInt.floor()
+  }
+
   return priceInt.div(truncateFactor).floor().mul(truncateFactor)
 }
 
@@ -107,6 +134,30 @@ class OrderFulfillmentService {
   clearProcessedFills(): void {
     this.processedFillsCache.clear()
     this.loadedMarkets.clear()
+  }
+
+  /**
+   * Get the processed fill quantity for an order (public wrapper)
+   * Returns the quantity that has already been processed/recorded
+   * @param orderId - The order ID to check
+   * @param marketId - The market ID
+   * @returns The processed quantity as a Decimal (0 if not processed)
+   */
+  async getProcessedFillQuantity(orderId: string, marketId: string): Promise<Decimal> {
+    await this.loadProcessedFillsFromDb(marketId)
+    const qty = await this.getProcessedFill(orderId, marketId)
+    return new Decimal(qty)
+  }
+
+  /**
+   * Mark a fill as processed (public wrapper)
+   * Call this after recording a fill to prevent duplicate processing
+   * @param orderId - The order ID
+   * @param filledQuantity - The total filled quantity (raw format)
+   * @param marketId - The market ID
+   */
+  async markFillProcessed(orderId: string, filledQuantity: string, marketId: string): Promise<void> {
+    await this.updateProcessedFill(orderId, filledQuantity, marketId)
   }
 
   /**
@@ -418,33 +469,55 @@ class OrderFulfillmentService {
       const filledQuantityScaled = new Decimal(filledBuyOrder.filled_quantity || '0')
       const filledQuantityHuman = filledQuantityScaled.div(10 ** market.base.decimals)
 
-      // Wait for balance to reflect the fill (with 1.2s timeout)
+      // Wait for balance to reflect the fill (with 1.5s timeout)
       // This handles the race condition where balance API hasn't updated yet after buy fill
-      // Using 1200ms/400ms as balanced tradeoff: 3 polls max, faster than original 6 polls
+      // If balance doesn't settle, the retry mechanism will handle it asynchronously
       const expectedMinBalance = filledQuantityHuman
-      const maxWaitMs = 1200 // 1.2 second max (reduced from 1.5s)
-      const pollIntervalMs = 400 // 400ms intervals (increased from 250ms)
+      const maxWaitMs = 1500 // 1.5 second max (slight increase from 1.2s, retry handles edge cases)
+      const pollIntervalMs = 400 // 400ms intervals
 
       let balances: { base: { unlocked: string }; quote: { unlocked: string } } | null = null
       let baseBalanceHuman = new Decimal(0)
       const startTime = Date.now()
+      let attempts = 0
 
       while (Date.now() - startTime < maxWaitMs) {
+        attempts++
         balanceService.clearCache()
         balances = await balanceService.getMarketBalances(market, tradingAccountId, ownerAddress)
         baseBalanceHuman = new Decimal(balances.base.unlocked).div(10 ** market.base.decimals)
 
         if (baseBalanceHuman.gte(expectedMinBalance)) {
-          console.log(`[OrderFulfillmentService] Balance settled: ${baseBalanceHuman}`)
+          console.log(`[OrderFulfillmentService] Balance settled: ${baseBalanceHuman} after ${attempts} attempts`)
           break
         }
 
-        console.log(`[OrderFulfillmentService] Waiting for balance settlement... current: ${baseBalanceHuman}, expected: ${expectedMinBalance}`)
+        console.log(`[OrderFulfillmentService] Waiting for balance settlement... current: ${baseBalanceHuman}, expected: ${expectedMinBalance} (attempt ${attempts})`)
         await new Promise(r => setTimeout(r, pollIntervalMs))
       }
 
       if (!balances || baseBalanceHuman.lt(expectedMinBalance)) {
-        console.log(`[OrderFulfillmentService] Balance not settled after ${maxWaitMs}ms, skipping immediate sell`)
+        const warningMessage = `Balance settlement timeout after ${attempts} attempts. ` +
+          `Required: ${expectedMinBalance}, Available: ${baseBalanceHuman}. ` +
+          `Buy order ${filledBuyOrder.order_id} filled but sell order not placed.`
+        console.error(`[OrderFulfillmentService] [WARNING] ${warningMessage}`)
+
+        // Emit warning event for UI notification
+        window.dispatchEvent(new CustomEvent('balance-settlement-timeout', {
+          detail: {
+            type: 'BALANCE_SETTLEMENT_TIMEOUT',
+            message: warningMessage,
+            buyOrderId: filledBuyOrder.order_id,
+            marketId: market.market_id,
+            requiredBalance: expectedMinBalance.toString(),
+            availableBalance: baseBalanceHuman.toString(),
+            timestamp: Date.now()
+          }
+        }))
+
+        // Schedule a retry after a delay (exponential backoff starting at 5s)
+        this.scheduleBalanceRetry(filledBuyOrder, market, configToUse, ownerAddress, tradingAccountId, 0)
+
         return null
       }
 
@@ -466,11 +539,12 @@ class OrderFulfillmentService {
       const quantityRounded = roundDownTo3Decimals(quantityToSell)
       const quantityScaled = quantityRounded.mul(10 ** market.base.decimals).toFixed(0)
 
-      // Truncate price according to max_precision
+      // Truncate price according to tick_size (or max_precision as fallback)
       const sellPriceTruncated = scaleUpAndTruncateToInt(
         sellPrice,
         market.quote.decimals,
-        market.quote.max_precision
+        market.quote.max_precision,
+        market.tick_size
       )
       const sellPriceScaled = sellPriceTruncated.toFixed(0)
 
@@ -530,6 +604,63 @@ class OrderFulfillmentService {
       console.error('[OrderFulfillmentService] Error placing immediate sell order after buy fill:', error)
       return null
     }
+  }
+
+  /**
+   * Schedule a retry for placing sell order after balance settlement timeout.
+   * Uses exponential backoff: 5s, 10s, 20s
+   */
+  private scheduleBalanceRetry(
+    filledBuyOrder: Order,
+    market: Market,
+    config: StrategyConfig,
+    ownerAddress: string,
+    tradingAccountId: string,
+    retryCount: number
+  ): void {
+    const maxRetries = 3
+    const retryDelayMs = 5000 * Math.pow(2, retryCount) // 5s, 10s, 20s
+
+    if (retryCount >= maxRetries) {
+      console.error(`[OrderFulfillmentService] Max retries (${maxRetries}) reached for sell after buy ${filledBuyOrder.order_id}. ` +
+        `User may need to manually sell position.`)
+      // Emit final warning
+      window.dispatchEvent(new CustomEvent('balance-settlement-failed', {
+        detail: {
+          type: 'BALANCE_SETTLEMENT_MAX_RETRIES',
+          message: `Failed to place sell order after ${maxRetries} retries. Manual intervention may be required.`,
+          buyOrderId: filledBuyOrder.order_id,
+          marketId: market.market_id,
+          timestamp: Date.now()
+        }
+      }))
+      return
+    }
+
+    console.log(`[OrderFulfillmentService] Scheduling retry ${retryCount + 1}/${maxRetries} for sell after buy ${filledBuyOrder.order_id} in ${retryDelayMs}ms`)
+
+    setTimeout(async () => {
+      try {
+        console.log(`[OrderFulfillmentService] Retry ${retryCount + 1} for sell after buy ${filledBuyOrder.order_id}`)
+        const result = await this.placeSellOrderAfterBuyFill(
+          filledBuyOrder,
+          market,
+          config,
+          ownerAddress,
+          tradingAccountId
+        )
+
+        if (result) {
+          console.log(`[OrderFulfillmentService] Retry ${retryCount + 1} successful: sell order ${result.order.order_id} placed`)
+        }
+        // Note: If result is null, the retry logic inside placeSellOrderAfterBuyFill
+        // will schedule another retry if balance still hasn't settled
+      } catch (error) {
+        console.error(`[OrderFulfillmentService] Retry ${retryCount + 1} failed:`, error)
+        // Schedule next retry
+        this.scheduleBalanceRetry(filledBuyOrder, market, config, ownerAddress, tradingAccountId, retryCount + 1)
+      }
+    }, retryDelayMs)
   }
 
   /**

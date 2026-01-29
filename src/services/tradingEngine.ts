@@ -36,6 +36,7 @@ export interface TradingContext {
   totalVolume: number
   totalFees: number
   realizedPnL: number
+  unrealizedPnL: number  // Unrealized P&L based on current market price
   tradeCount: number
   // Starting balances (from session)
   startingBaseBalance: string | null   // "0.5 ETH"
@@ -68,11 +69,15 @@ class TradingEngine {
   private onContextCallbacks: ContextCallback[] = []
   private onMultiContextCallbacks: MultiContextCallback[] = []
   private onTradingStateCallbacks: TradingStateCallback[] = []
-  private transactionLock: boolean = false
   private lastContext: TradingContext | null = null
   private marketContexts: Map<string, TradingContext> = new Map()
   private orderCancelListener: ((e: Event) => void) | null = null
   private configVersions: Map<string, number> = new Map() // Track config versions for change detection
+
+  // Round-robin scheduler: markets take turns in queue order
+  private marketQueue: string[] = [] // Queue of market IDs for fair rotation
+  private schedulerTimeoutId?: number // Central scheduler timeout
+  private isProcessingMarket: boolean = false // Lock for central scheduler
 
   private emitStatus(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', verbosity: 'simple' | 'debug' = 'simple'): void {
     this.onStatusCallbacks.forEach((callback) => {
@@ -230,7 +235,11 @@ class TradingEngine {
 
     console.log(`[TradingEngine] Starting trading loops for ${this.marketConfigs.size} market(s)...`)
 
-    // Start trading loops for each market
+    // Initialize round-robin queue with all markets
+    this.marketQueue = []
+
+    // Initialize each market and add to the round-robin queue
+    let marketIndex = 0
     for (const [marketId, marketConfig] of this.marketConfigs) {
       const marketPair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
 
@@ -283,8 +292,12 @@ class TradingEngine {
         console.log(`[TradingEngine] New session: ${session.id} (starting: ${startingBaseBalance} ${marketConfig.market.base.symbol} + $${startingQuoteBalance})`)
       }
 
-      // Set nextRunAt to now for immediate execution (better UX)
-      marketConfig.nextRunAt = Date.now()
+      // Set initial run time (staggered slightly for orderly initialization)
+      const STAGGER_DELAY_MS = 200
+      marketConfig.nextRunAt = Date.now() + (marketIndex * STAGGER_DELAY_MS)
+
+      // Add to round-robin queue
+      this.marketQueue.push(marketId)
 
       // Emit initial context immediately so TradeConsole shows all markets right away
       const strategyName = marketConfig.config.name || 'Custom'
@@ -303,7 +316,8 @@ class TradingEngine {
         sessionId: session?.id || null,
         totalVolume: session?.totalVolume || 0,
         totalFees: session?.totalFees || 0,
-        realizedPnL: session?.realizedPnL || 0,
+        realizedPnL: parseFloat(session?.realizedPnL || '0') || 0,
+        unrealizedPnL: parseFloat(session?.unrealizedPnL || '0') || 0,
         tradeCount: session?.tradeCount || 0,
         startingBaseBalance: session?.startingBaseBalance ? `${session.startingBaseBalance} ${baseSymbol}` : null,
         startingQuoteBalance: session?.startingQuoteBalance ? `$${session.startingQuoteBalance}` : null,
@@ -311,17 +325,23 @@ class TradingEngine {
       }
       this.emitContext(initialContext)
 
-      this.startMarketTrading(marketId, marketConfig)
+      console.log(`[TradingEngine] Added ${marketPair} to round-robin queue (position ${marketIndex})`)
 
       // Emit strategy start message
       this.emitStatus(i18next.t('trading_console.strategy_started', { pair: marketPair, name: strategyName }), 'info')
 
-      // NOTE: Fill tracking is handled directly in executeTrade() (lines 347-407)
+      // NOTE: Fill tracking is handled directly in executeMarketTrade()
       // We don't start separate polling to avoid race conditions and duplicate processing
+
+      marketIndex++
     }
 
     // Setup order cancel listener to update context when orders are cancelled
     this.setupOrderCancelListener()
+
+    // Start the central round-robin scheduler
+    console.log(`[TradingEngine] Starting round-robin scheduler with ${this.marketQueue.length} market(s): ${this.marketQueue.join(', ')}`)
+    this.scheduleNextMarket()
 
     // Track session started
     const marketPairs = Array.from(this.marketConfigs.values()).map(mc =>
@@ -364,9 +384,10 @@ class TradingEngine {
           const sellOrder = sellOrders[0]
           const priceHuman = new Decimal(sellOrder.price).div(10 ** marketConfig.market.quote.decimals)
           const quantityHuman = new Decimal(sellOrder.quantity).div(10 ** marketConfig.market.base.decimals)
+          const qtyPrecision = marketConfig.market.base.max_precision ?? 8
           pendingSellOrder = {
             price: priceHuman.toFixed(marketConfig.market.quote.decimals).replace(/\.?0+$/, ''),
-            quantity: quantityHuman.toFixed(3).replace(/\.?0+$/, '')
+            quantity: quantityHuman.toFixed(qtyPrecision).replace(/\.?0+$/, '')
           }
         }
 
@@ -423,7 +444,7 @@ class TradingEngine {
     }
 
     this.isRunning = false
-    this.transactionLock = false
+    this.isProcessingMarket = false
 
     // Remove order cancel listener
     this.removeOrderCancelListener()
@@ -446,7 +467,13 @@ class TradingEngine {
     // Don't clear lastContext so it persists when trading stops
     // this.lastContext = null
 
-    // Clear all intervals
+    // Clear central scheduler timeout
+    if (this.schedulerTimeoutId) {
+      clearTimeout(this.schedulerTimeoutId)
+      this.schedulerTimeoutId = undefined
+    }
+
+    // Clear all individual market intervals (legacy, for safety)
     for (const marketConfig of this.marketConfigs.values()) {
       if (marketConfig.intervalId) {
         clearTimeout(marketConfig.intervalId)
@@ -454,6 +481,7 @@ class TradingEngine {
     }
 
     this.marketConfigs.clear()
+    this.marketQueue = [] // Clear round-robin queue
     this.configVersions.clear() // Clear cached config versions
 
     // Notify listeners that trading has stopped
@@ -477,7 +505,14 @@ class TradingEngine {
 
     console.log(`[TradingEngine] Stopping trading for market ${marketId}`)
 
-    // Clear the timeout for this market's trading loop
+    // Remove from round-robin queue
+    const queueIndex = this.marketQueue.indexOf(marketId)
+    if (queueIndex > -1) {
+      this.marketQueue.splice(queueIndex, 1)
+      console.log(`[TradingEngine] Removed ${marketId} from queue. Queue: ${this.marketQueue.join(', ')}`)
+    }
+
+    // Clear the timeout for this market's trading loop (legacy, for safety)
     if (marketConfig.intervalId) {
       clearTimeout(marketConfig.intervalId)
     }
@@ -602,6 +637,7 @@ class TradingEngine {
       totalVolume: 0,
       totalFees: 0,
       realizedPnL: 0,
+      unrealizedPnL: 0,
       tradeCount: 0,
       startingBaseBalance: startingBaseBalance ? `${startingBaseBalance} ${market.base.symbol}` : null,
       startingQuoteBalance: startingQuoteBalance ? `$${startingQuoteBalance}` : null,
@@ -609,8 +645,14 @@ class TradingEngine {
     }
     this.emitContext(initialContext)
 
-    // Start trading loop
-    this.startMarketTrading(marketId, marketConfig)
+    // Add to round-robin queue (new market goes at the end to be fair)
+    this.marketQueue.push(marketId)
+    console.log(`[TradingEngine] Added ${marketPair} to round-robin queue. Queue: ${this.marketQueue.join(', ')}`)
+
+    // If scheduler isn't running (no markets were active), start it
+    if (!this.schedulerTimeoutId && !this.isProcessingMarket) {
+      this.scheduleNextMarket()
+    }
 
     this.emitStatus(i18next.t('trading_console.strategy_started', { pair: marketPair, name: strategyName }), 'info')
     console.log(`[TradingEngine] Added ${marketPair} to active trading. Total markets: ${this.marketConfigs.size}`)
@@ -670,30 +712,73 @@ class TradingEngine {
     this.marketConfigs.set(marketId, marketConfig)
   }
 
-  private startMarketTrading(marketId: string, marketConfig: MarketConfig): void {
-    const executeTrade = async () => {
-      if (!this.isRunning || !this.ownerAddress || !this.tradingAccountId) {
-        console.log('[TradingEngine] Not running or not initialized, stopping')
-        return
-      }
+  /**
+   * Central round-robin scheduler: schedules the next market in the queue to execute
+   * This ensures fair rotation - no market runs twice until all others have had a turn
+   */
+  private scheduleNextMarket(): void {
+    if (!this.isRunning || this.marketQueue.length === 0) {
+      console.log('[TradingEngine] Scheduler stopping: not running or empty queue')
+      return
+    }
 
-      if (this.transactionLock) {
-        const pair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
-        console.log(`[TradingEngine] ${pair}: Transaction locked, rescheduling in 2.5s`)
-        if (this.isRunning) {
-          const delay = 2500
-          marketConfig.nextRunAt = Date.now() + delay
-          marketConfig.intervalId = window.setTimeout(executeTrade, delay)
-        }
-        return
-      }
+    // If already processing a market, don't schedule another
+    if (this.isProcessingMarket) {
+      return
+    }
 
-      this.transactionLock = true
-      this.sessionTradeCycles++
+    // Get the next market from the front of the queue
+    const nextMarketId = this.marketQueue[0]
+    const marketConfig = this.marketConfigs.get(nextMarketId)
 
-      try {
-        const pair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
-        console.log(`[TradingEngine] Executing strategy for ${marketConfig.market.market_id}`)
+    if (!marketConfig) {
+      // Market was removed, skip it
+      this.marketQueue.shift()
+      console.log(`[TradingEngine] Skipped removed market ${nextMarketId}, queue: ${this.marketQueue.join(', ')}`)
+      this.scheduleNextMarket()
+      return
+    }
+
+    // Calculate delay until this market is ready to execute
+    const now = Date.now()
+    const delay = Math.max(0, marketConfig.nextRunAt - now)
+
+    const pair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
+    console.log(`[TradingEngine] Scheduler: next market ${pair} in ${delay}ms (queue: ${this.marketQueue.join(', ')})`)
+
+    // Clear any existing timeout
+    if (this.schedulerTimeoutId) {
+      clearTimeout(this.schedulerTimeoutId)
+    }
+
+    this.schedulerTimeoutId = window.setTimeout(() => {
+      this.executeMarketTrade(nextMarketId)
+    }, delay)
+  }
+
+  /**
+   * Execute trading for a single market, then rotate to the next market in queue
+   */
+  private async executeMarketTrade(marketId: string): Promise<void> {
+    const marketConfig = this.marketConfigs.get(marketId)
+    if (!marketConfig) {
+      // Market was removed while waiting
+      this.marketQueue = this.marketQueue.filter(id => id !== marketId)
+      this.scheduleNextMarket()
+      return
+    }
+
+    if (!this.isRunning || !this.ownerAddress || !this.tradingAccountId) {
+      console.log('[TradingEngine] Not running or not initialized, stopping')
+      return
+    }
+
+    this.isProcessingMarket = true
+    this.sessionTradeCycles++
+
+    try {
+      const pair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
+      console.log(`[TradingEngine] Executing strategy for ${pair} (queue position: front)`)
 
         // Debug: Strategy cycle start
         this.emitStatus(i18next.t('trading_console.cycle_starting', { pair, cycle: this.sessionTradeCycles }), 'info', 'debug')
@@ -717,11 +802,9 @@ class TradingEngine {
         if (this.isTradingPausedDueToSessionLoss(marketConfig.config, currentSession)) {
           const maxLoss = marketConfig.config.riskManagement?.maxSessionLossUsd || 0
           this.emitStatus(i18next.t('trading_console.session_loss_exceeded', { pair, maxLoss }), 'warning')
-          // Reschedule with longer delay when paused
+          // Set next run time with longer delay when paused
           marketConfig.nextRunAt = Date.now() + 60000 // Check again in 1 minute
-          if (this.isRunning) {
-            marketConfig.intervalId = window.setTimeout(executeTrade, 60000)
-          }
+          // Let the scheduler rotate to next market (handled in finally block)
           return
         }
 
@@ -776,9 +859,10 @@ class TradingEngine {
             const sellOrder = sellOrders[0]
             const priceHuman = new Decimal(sellOrder.price).div(10 ** marketConfig.market.quote.decimals)
             const quantityHuman = new Decimal(sellOrder.quantity).div(10 ** marketConfig.market.base.decimals)
+            const qtyPrecision = marketConfig.market.base.max_precision ?? 8
             pendingSellOrder = {
               price: priceHuman.toFixed(marketConfig.market.quote.decimals).replace(/\.?0+$/, ''),
-              quantity: quantityHuman.toFixed(3).replace(/\.?0+$/, '')
+              quantity: quantityHuman.toFixed(qtyPrecision).replace(/\.?0+$/, '')
             }
           }
 
@@ -817,6 +901,13 @@ class TradingEngine {
           // Session metrics use currentSession fetched earlier (avoids duplicate API call)
           const baseSymbol = marketConfig.market.base.symbol
 
+          // Calculate unrealized PnL based on current market price
+          let currentUnrealizedPnL = 0
+          if (currentSession && currentPriceDecimal) {
+            const { unrealizedPnL } = tradingSessionService.calculateUnrealizedPnL(currentSession, currentPriceDecimal)
+            currentUnrealizedPnL = unrealizedPnL.toNumber()
+          }
+
           const context: TradingContext = {
             pair,
             baseBalance: `${baseBalanceHuman.toFixed(6).replace(/\.?0+$/, '')} ${baseSymbol}`,
@@ -832,7 +923,8 @@ class TradingEngine {
             sessionId: currentSession?.id || null,
             totalVolume: currentSession?.totalVolume || 0,
             totalFees: currentSession?.totalFees || 0,
-            realizedPnL: currentSession?.realizedPnL || 0,
+            realizedPnL: parseFloat(currentSession?.realizedPnL || '0') || 0,
+            unrealizedPnL: currentUnrealizedPnL,
             tradeCount: currentSession?.tradeCount || 0,
             // Starting balances (from session)
             startingBaseBalance: currentSession?.startingBaseBalance
@@ -855,6 +947,11 @@ class TradingEngine {
               quoteBalance: quoteBalanceHuman.toFixed(2),
               lastBuyPrice: marketConfig.config.averageBuyPrice
             })
+
+            // Update unrealized PnL based on current market price
+            if (currentPriceDecimal) {
+              await tradingSessionService.updateMarketPrice(currentSession.id, currentPriceDecimal)
+            }
           }
         } catch (error) {
           console.warn('[TradingEngine] Failed to gather context:', error)
@@ -884,11 +981,8 @@ class TradingEngine {
           console.warn(`[TradingEngine] Strategy returned no result for ${marketId}`)
           const pairNoResult = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
           this.emitStatus(i18next.t('trading_console.strategy_no_result', { pair: pairNoResult }), 'warning')
-          // Reschedule
+          // Set next run time, let scheduler handle rotation
           marketConfig.nextRunAt = Date.now() + 10000
-          if (this.isRunning) {
-            marketConfig.intervalId = window.setTimeout(executeTrade, 10000)
-          }
           return
         }
 
@@ -899,6 +993,9 @@ class TradingEngine {
 
         if (result.executed && result.orders) {
           this.sessionTradeCycles++
+
+          // Note: Fill tracking is handled directly in executeTrade (below) and syncPendingTradeStatuses
+          // We don't use the polling service to avoid race conditions (see line 321-322)
 
           // Record trades
           for (const orderExec of result.orders) {
@@ -1098,12 +1195,14 @@ class TradingEngine {
 
               // Only process if there's a new fill (not just re-detecting old fill)
               if (newFillQtyHuman.gt(0)) {
+                // Use market's max_precision for quantity display (or fallback to 8 decimals)
+                const qtyPrecision = market.base.max_precision ?? 8
                 this.emitStatus(
                   i18next.t('trading_console.order_filled', {
                     pair,
                     orderType: fillOrderType,
                     side: fillSide,
-                    qty: newFillQtyHuman.toFixed(3).replace(/\.?0+$/, ''),
+                    qty: newFillQtyHuman.toFixed(qtyPrecision).replace(/\.?0+$/, ''),
                     symbol: market.base.symbol,
                     price: fillPriceHuman.toFixed(market.quote.decimals).replace(/\.?0+$/, '')
                   }),
@@ -1187,10 +1286,11 @@ class TradingEngine {
                       await tradeHistoryService.addTrade(trade)
 
                       // Emit status notification with order details
+                      const qtyPrecision = market.base.max_precision ?? 8
                       this.emitStatus(
                         i18next.t('trading_console.sell_order_waiting', {
                           pair,
-                          qty: quantityHuman.toFixed(3).replace(/\.?0+$/, ''),
+                          qty: quantityHuman.toFixed(qtyPrecision).replace(/\.?0+$/, ''),
                           symbol: market.base.symbol,
                           price: priceHuman.toFixed(market.quote.decimals).replace(/\.?0+$/, '')
                         }),
@@ -1212,36 +1312,39 @@ class TradingEngine {
         }
 
         // Sync pending trade statuses with API (handles cancelled/filled orders)
-        await this.syncPendingTradeStatuses(marketConfig.market.market_id, this.ownerAddress!)
+        // Pass the correct sessionId for this market to ensure P&L is recorded to the right session
+        await this.syncPendingTradeStatuses(marketConfig.market.market_id, this.ownerAddress!, marketConfig.sessionId)
 
-        // Schedule next execution
+        // Set next execution time for this market
         const nextRunAt = result.nextRunAt || Date.now() + this.getJitteredDelay(marketConfig.config)
         marketConfig.nextRunAt = nextRunAt
-
-        if (this.isRunning) {
-          const delay = Math.max(0, nextRunAt - Date.now())
-          console.log(`[TradingEngine] Next execution in ${delay}ms`)
-          marketConfig.intervalId = window.setTimeout(executeTrade, delay)
-        }
+        console.log(`[TradingEngine] ${pair} next run at: ${new Date(nextRunAt).toISOString()}`)
       } catch (error: any) {
         console.error(`[TradingEngine] Error executing strategy for ${marketId}:`, error)
         const errorPair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
         this.emitStatus(i18next.t('trading_console.error_in_strategy', { pair: errorPair, error: error.message }), 'error')
 
-        // Reschedule with delay on error
+        // Set next run time with delay on error
         marketConfig.nextRunAt = Date.now() + 10000
-        if (this.isRunning) {
-          marketConfig.intervalId = window.setTimeout(executeTrade, 10000)
+    } finally {
+      this.isProcessingMarket = false
+
+      // Rotate queue: move current market to the back
+      if (this.marketQueue.length > 0 && this.marketQueue[0] === marketId) {
+        this.marketQueue.shift()
+        if (this.marketConfigs.has(marketId)) {
+          this.marketQueue.push(marketId)
         }
-      } finally {
-        this.transactionLock = false
+      }
+
+      const pair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
+      console.log(`[TradingEngine] ${pair} done, rotated to back. Queue: ${this.marketQueue.join(', ')}`)
+
+      // Schedule the next market in queue
+      if (this.isRunning) {
+        this.scheduleNextMarket()
       }
     }
-
-    // Start first execution
-    const delay = Math.max(0, marketConfig.nextRunAt - Date.now())
-    console.log(`[TradingEngine] Starting trading for ${marketId}, first execution in ${delay}ms`)
-    marketConfig.intervalId = window.setTimeout(executeTrade, delay)
   }
 
   private getJitteredDelay(config: StrategyConfig): number {
@@ -1252,8 +1355,11 @@ class TradingEngine {
 
   /**
    * Sync pending trade statuses with API to detect cancelled/filled orders
+   * @param marketId - The market ID to sync trades for
+   * @param ownerAddress - The owner's address
+   * @param sessionId - The session ID for this market (used for P&L recording)
    */
-  private async syncPendingTradeStatuses(marketId: string, ownerAddress: string): Promise<void> {
+  private async syncPendingTradeStatuses(marketId: string, ownerAddress: string, sessionId?: string): Promise<void> {
     try {
       // Get trades with pending status for this market
       const pendingTrades = await db.trades
@@ -1290,16 +1396,24 @@ class TradingEngine {
               })
 
               // Record confirmed fill for P&L calculation
-              if (order.price_fill && order.filled_quantity) {
-                const sessionId = tradingSessionService.getCurrentSessionId()
-                if (sessionId) {
+              // Use the passed sessionId (correct for this market) instead of getCurrentSessionId()
+              if (order.price_fill && order.filled_quantity && sessionId) {
+                // Check if this fill was already processed by trackOrderFills
+                // trackOrderFills maintains processedFills tracking to prevent duplicates
+                const alreadyProcessedQty = await orderFulfillmentService.getProcessedFillQuantity(trade.orderId!, marketId)
+                const currentFilledQty = new Decimal(order.filled_quantity)
+
+                // Only record if there's new quantity to process
+                if (currentFilledQty.gt(alreadyProcessedQty)) {
+                  const newFillQty = currentFilledQty.minus(alreadyProcessedQty)
+
                   // Get market decimals to convert to human-readable format
                   const market = await marketService.getMarket(marketId)
                   if (market) {
                     const fillPriceHuman = new Decimal(order.price_fill)
                       .div(10 ** market.quote.decimals)
                       .toString()
-                    const fillQtyHuman = new Decimal(order.filled_quantity)
+                    const newFillQtyHuman = newFillQty
                       .div(10 ** market.base.decimals)
                       .toString()
                     const pair = `${market.base.symbol}/${market.quote.symbol}`
@@ -1309,10 +1423,17 @@ class TradingEngine {
                       orderId: trade.orderId!,
                       side: trade.side as 'Buy' | 'Sell',
                       fillPrice: fillPriceHuman,
-                      fillQuantity: fillQtyHuman,
+                      fillQuantity: newFillQtyHuman,
                       marketPair: pair,
                     })
+
+                    // Update processed fills tracking to prevent future duplicates
+                    await orderFulfillmentService.markFillProcessed(trade.orderId!, order.filled_quantity, marketId)
+
+                    console.log(`[TradingEngine] Recorded fill for ${trade.orderId}: ${newFillQtyHuman} (was ${alreadyProcessedQty.toString()}, now ${order.filled_quantity})`)
                   }
+                } else {
+                  console.log(`[TradingEngine] Skipping duplicate fill for ${trade.orderId} - already processed ${alreadyProcessedQty.toString()}`)
                 }
               }
             }
@@ -1342,9 +1463,10 @@ class TradingEngine {
 
     // Check session P&L against threshold
     const maxLoss = config.riskManagement.maxSessionLossUsd
-    if (session.realizedPnL < -maxLoss) {
+    const sessionPnL = new Decimal(session.realizedPnL || '0')
+    if (sessionPnL.lt(-maxLoss)) {
       console.log('[TradingEngine] Session P&L exceeded max loss:', {
-        sessionPnL: session.realizedPnL,
+        sessionPnL: sessionPnL.toNumber(),
         maxLoss: -maxLoss
       })
       return true

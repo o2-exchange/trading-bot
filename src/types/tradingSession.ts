@@ -22,7 +22,7 @@ export interface TradingSession {
   // Metrics
   totalVolume: number // USD
   totalFees: number // USD
-  realizedPnL: number // USD
+  realizedPnL: string // USD - stored as string for precision
   tradeCount: number
   buyCount: number
   sellCount: number
@@ -36,8 +36,13 @@ export interface TradingSession {
 
   // Unsold inventory tracking (for accurate P&L calculation)
   // These track only the cost basis of inventory that hasn't been sold yet
-  unsoldCostBasis: number    // Total USD cost of unsold inventory
+  unsoldCostBasis: string    // Total USD cost of unsold inventory - stored as string for precision
   unsoldQuantity: string     // Quantity of unsold inventory (human-readable)
+
+  // Unrealized PnL tracking (based on current market price)
+  unrealizedPnL?: string      // Current unrealized P&L - stored as string for precision
+  lastMarketPrice?: string    // Last known market price for base asset
+  lastPriceUpdateTime?: number // Timestamp of last price update
 
   // Trade history within session
   trades: TradingSessionTrade[]

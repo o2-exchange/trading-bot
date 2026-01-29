@@ -566,6 +566,14 @@
   "release_notes": {
     "title": "Release Notes",
     "auto_update_note": "The app updates automatically when you refresh the page. No action needed to stay up-to-date.",
+    "jan_29": {
+      "pnl_title": "Improved P&L Tracking",
+      "pnl_desc": "Fixed P%L double calculations. P&L now includes both realized and unrealized profits. ",
+      "orders_title": "More Reliable Order Execution",
+      "orders_desc": "Orders now automatically align to market precision requirements. Added automatic retry when placing sell orders after buy fills to ensure no trades are missed.",
+      "stability_title": "Multi-Market Stability",
+      "stability_desc": "Fair scheduling across all trading pairs ensures consistent performance. Faster fill detection reduces latency when your orders execute."
+    },
     "jan_26": {
       "rewards_title": "Leaderboard Rewards",
       "rewards_desc": "See your potential rewards directly on the competition leaderboard. Track your position and estimated earnings as you climb the ranks.",

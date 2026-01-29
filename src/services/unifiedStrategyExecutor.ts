@@ -7,9 +7,35 @@ import { orderService } from './orderService'
 import { balanceService } from './balanceService'
 import { orderFulfillmentService } from './orderFulfillmentService'
 import { db } from './dbService'
+import { validateOrderParams } from '../utils/orderValidation'
 
 /**
- * Rounds down a quantity to 3 decimal places
+ * Rounds down a quantity to market's allowed precision.
+ * Uses market's step_size if available, otherwise uses base.max_precision.
+ */
+function roundDownToMarketPrecision(quantity: Decimal, market: Market): Decimal {
+  // Use step_size if available (most precise method)
+  if (market.step_size) {
+    const stepSize = new Decimal(market.step_size)
+    if (!stepSize.isZero()) {
+      const result = quantity.div(stepSize).floor().mul(stepSize)
+      console.log(`[roundDownToMarketPrecision] ${market.base.symbol}: using step_size=${market.step_size}, ${quantity.toString()} -> ${result.toString()}`)
+      return result
+    }
+  }
+
+  // Fallback to base.max_precision (the exchange's allowed precision for order quantities)
+  // This is different from base.decimals which is the token's full precision
+  const maxPrecision = market.base.max_precision ?? Math.min(market.base.decimals, 6)
+  const multiplier = new Decimal(10).pow(maxPrecision)
+  const result = quantity.mul(multiplier).floor().div(multiplier)
+  console.log(`[roundDownToMarketPrecision] ${market.base.symbol}: using max_precision=${maxPrecision} (base.max_precision=${market.base.max_precision}, base.decimals=${market.base.decimals}), ${quantity.toString()} -> ${result.toString()}`)
+  return result
+}
+
+/**
+ * Legacy function for backward compatibility - rounds to 3 decimals
+ * @deprecated Use roundDownToMarketPrecision instead
  */
 function roundDownTo3Decimals(quantity: Decimal): Decimal {
   const multiplier = new Decimal(1000)
@@ -18,37 +44,87 @@ function roundDownTo3Decimals(quantity: Decimal): Decimal {
 
 /**
  * Scales up a Decimal by a given number of decimals and truncates it
- * according to the maximum precision.
+ * according to the maximum precision or tick size.
+ *
+ * If tickSize is provided, the price will be aligned to the tick size.
+ * Otherwise, truncation is based on max_precision.
+ *
+ * @param amount - Price in human-readable format
+ * @param decimals - Number of decimals for the quote asset
+ * @param maxPrecision - Maximum precision allowed (usually less than decimals)
+ * @param tickSize - Optional tick size string from market config (in human-readable format)
+ * @returns Scaled and truncated price as integer
  */
-function scaleUpAndTruncateToInt(amount: Decimal, decimals: number, maxPrecision: number): Decimal {
+function scaleUpAndTruncateToInt(
+  amount: Decimal,
+  decimals: number,
+  maxPrecision: number,
+  tickSize?: string
+): Decimal {
+  // If tick_size is available, use it for alignment (more precise than max_precision)
+  if (tickSize) {
+    const tickSizeDecimal = new Decimal(tickSize)
+    if (!tickSizeDecimal.isZero()) {
+      // Align price to tick size first (in human format)
+      const tickAlignedPrice = amount.div(tickSizeDecimal).floor().mul(tickSizeDecimal)
+      // Then scale to raw integer
+      return tickAlignedPrice.mul(new Decimal(10).pow(decimals)).floor()
+    }
+  }
+
+  // Fallback to max_precision-based truncation
+  // Ensure maxPrecision has a valid value (default to decimals if undefined)
+  const effectivePrecision = maxPrecision !== undefined && maxPrecision >= 0 ? maxPrecision : decimals
   const priceInt = amount.mul(new Decimal(10).pow(decimals))
-  const truncateFactor = new Decimal(10).pow(decimals - maxPrecision)
+  const truncateFactor = new Decimal(10).pow(decimals - effectivePrecision)
+
+  // If truncateFactor is less than or equal to 1, no truncation needed
+  if (truncateFactor.lte(1)) {
+    return priceInt.floor()
+  }
+
   return priceInt.div(truncateFactor).floor().mul(truncateFactor)
 }
 
 /**
- * Format price with appropriate decimal places based on value, removing trailing zeros
+ * Format price with appropriate decimal places based on value, removing trailing zeros.
+ * Uses Decimal comparisons to avoid precision loss from .toNumber() conversion.
  */
 function formatPrice(price: Decimal): string {
-  const priceValue = price.toNumber()
-
-  if (priceValue === 0 || isNaN(priceValue) || !isFinite(priceValue)) {
+  if (price.isZero() || price.isNaN() || !price.isFinite()) {
     return '0'
   }
 
-  let formatted: string
-  if (priceValue >= 1) {
-    formatted = priceValue.toFixed(2)
-  } else if (priceValue >= 0.01) {
-    formatted = priceValue.toFixed(4)
-  } else if (priceValue >= 0.0001) {
-    formatted = priceValue.toFixed(6)
+  const absPrice = price.abs()
+  let decimals: number
+
+  // Use Decimal comparisons to determine precision needed
+  if (absPrice.gte(10000)) {
+    decimals = 0
+  } else if (absPrice.gte(1000)) {
+    decimals = 1
+  } else if (absPrice.gte(1)) {
+    decimals = 2
+  } else if (absPrice.gte(0.01)) {
+    decimals = 4
+  } else if (absPrice.gte(0.0001)) {
+    decimals = 6
   } else {
-    formatted = priceValue.toFixed(8)
+    decimals = 8
   }
 
+  // For very small prices, ensure we have enough decimals to show significant figures
+  if (absPrice.lt(1) && absPrice.gt(0)) {
+    // Calculate how many decimals we need for 2 significant figures
+    const magnitude = Math.floor(Math.log10(absPrice.toNumber()))
+    const neededDecimals = -magnitude + 1 // +1 for 2 sig figs
+    decimals = Math.max(decimals, Math.min(neededDecimals, 8))
+  }
+
+  const formatted = price.toFixed(decimals)
+
   // Remove trailing zeros
-  return formatted.replace(/\.?0+$/, '')
+  return formatted.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
 }
 
 /**
@@ -156,15 +232,16 @@ class UnifiedStrategyExecutor {
 
     // 4. Place market sell order for entire base balance
     try {
-      // Round quantity to 3 decimal places
-      const quantityRounded = roundDownTo3Decimals(baseBalanceHuman)
+      // Round quantity to market precision (uses step_size or base decimals)
+      const quantityRounded = roundDownToMarketPrecision(baseBalanceHuman, market)
       const quantityScaled = quantityRounded.mul(10 ** market.base.decimals).toFixed(0)
 
       // Use current market price (no profit requirement for stop loss)
       const sellPriceTruncated = scaleUpAndTruncateToInt(
         currentPrice,
         market.quote.decimals,
-        market.quote.max_precision
+        market.quote.max_precision,
+        market.tick_size
       )
       const sellPriceScaled = sellPriceTruncated.toFixed(0)
 
@@ -181,6 +258,8 @@ class UnifiedStrategyExecutor {
       console.log('[UnifiedStrategyExecutor] Stop loss: Market sell order placed:', order.order_id)
 
       const marketPair = `${market.base.symbol}/${market.quote.symbol}`
+      // Use market precision for quantity display (max 8 decimals)
+      const quantityPrecision = Math.min(market.base.decimals, 8)
       orders.push({
         orderId: order.order_id,
         side: 'Sell',
@@ -188,7 +267,7 @@ class UnifiedStrategyExecutor {
         price: sellPriceScaled,
         quantity: quantityScaled,
         priceHuman: formatPrice(currentPrice),
-        quantityHuman: quantityRounded.toFixed(3).replace(/\.?0+$/, ''),
+        quantityHuman: quantityRounded.toFixed(quantityPrecision).replace(/\.?0+$/, ''),
         marketPair,
       })
 
@@ -662,16 +741,17 @@ class UnifiedStrategyExecutor {
       return null
     }
 
-    // Truncate price according to max_precision
+    // Truncate price according to tick_size (or max_precision as fallback)
     const buyPriceTruncated = scaleUpAndTruncateToInt(
       buyPriceHuman,
       market.quote.decimals,
-      market.quote.max_precision
+      market.quote.max_precision,
+      market.tick_size
     )
     const buyPriceScaled = buyPriceTruncated.toFixed(0)
 
-    // Round quantity to 3 decimal places
-    const quantityRounded = roundDownTo3Decimals(orderSize.quantity)
+    // Round quantity to market precision (uses step_size or base decimals)
+    const quantityRounded = roundDownToMarketPrecision(orderSize.quantity, market)
     const quantityScaled = quantityRounded.mul(10 ** market.base.decimals).toFixed(0)
 
     // Check minimum order size
@@ -689,6 +769,23 @@ class UnifiedStrategyExecutor {
         bestAskPrice: bestAskPrice.toString(),
         orderbookAvailable: true
       })
+    }
+
+    // Validate order parameters against market constraints
+    const validation = validateOrderParams(buyPriceHuman, quantityRounded, market)
+    if (!validation.valid) {
+      console.error('[UnifiedStrategyExecutor] Buy order invalid:', validation.errors)
+      const marketPair = `${market.base.symbol}/${market.quote.symbol}`
+      return {
+        orderId: '',
+        side: 'Buy',
+        success: false,
+        error: validation.errors.join('; '),
+        marketPair,
+      }
+    }
+    if (validation.warnings.length > 0) {
+      console.warn('[UnifiedStrategyExecutor] Buy order warnings:', validation.warnings)
     }
 
     try {
@@ -717,6 +814,8 @@ class UnifiedStrategyExecutor {
       }
       
       const isLimitOrder = config.orderConfig.orderType === 'Spot'
+      // Use market precision for quantity display (max 8 decimals)
+      const quantityPrecision = Math.min(market.base.decimals, 8)
       return {
         orderId: order.order_id,
         side: 'Buy',
@@ -724,7 +823,7 @@ class UnifiedStrategyExecutor {
         price: buyPriceScaled,
         quantity: quantityScaled,
         priceHuman: formatPrice(displayPrice),
-        quantityHuman: quantityRounded.toFixed(3).replace(/\.?0+$/, ''),
+        quantityHuman: quantityRounded.toFixed(quantityPrecision).replace(/\.?0+$/, ''),
         marketPair,
         isLimitOrder,
       }
@@ -818,16 +917,17 @@ class UnifiedStrategyExecutor {
       return null
     }
 
-    // Truncate price according to max_precision (use adjusted price)
+    // Truncate price according to tick_size (or max_precision as fallback)
     const sellPriceTruncated = scaleUpAndTruncateToInt(
       adjustedSellPrice,
       market.quote.decimals,
-      market.quote.max_precision
+      market.quote.max_precision,
+      market.tick_size
     )
     const sellPriceScaled = sellPriceTruncated.toFixed(0)
 
-    // Round quantity to 3 decimal places
-    const quantityRounded = roundDownTo3Decimals(orderSize.quantity)
+    // Round quantity to market precision (uses step_size or base decimals)
+    const quantityRounded = roundDownToMarketPrecision(orderSize.quantity, market)
     const quantityScaled = quantityRounded.mul(10 ** market.base.decimals).toFixed(0)
 
     // Check minimum order size (use adjusted price)
@@ -849,6 +949,23 @@ class UnifiedStrategyExecutor {
         forceLimitOrder,
         priceAdjusted: !adjustedSellPrice.eq(sellPriceHuman)
       })
+    }
+
+    // Validate order parameters against market constraints
+    const validation = validateOrderParams(adjustedSellPrice, quantityRounded, market)
+    if (!validation.valid) {
+      console.error('[UnifiedStrategyExecutor] Sell order invalid:', validation.errors)
+      const marketPair = `${market.base.symbol}/${market.quote.symbol}`
+      return {
+        orderId: '',
+        side: 'Sell',
+        success: false,
+        error: validation.errors.join('; '),
+        marketPair,
+      }
+    }
+    if (validation.warnings.length > 0) {
+      console.warn('[UnifiedStrategyExecutor] Sell order warnings:', validation.warnings)
     }
 
     try {
@@ -884,6 +1001,8 @@ class UnifiedStrategyExecutor {
       
       // Limit order if forced (profit protection) or config is Spot
       const isLimitOrder = forceLimitOrder || config.orderConfig.orderType === 'Spot'
+      // Use market precision for quantity display (max 8 decimals)
+      const quantityPrecision = Math.min(market.base.decimals, 8)
       return {
         orderId: order.order_id,
         side: 'Sell',
@@ -891,7 +1010,7 @@ class UnifiedStrategyExecutor {
         price: sellPriceScaled,
         quantity: quantityScaled,
         priceHuman: formatPrice(displayPrice),
-        quantityHuman: quantityRounded.toFixed(3).replace(/\.?0+$/, ''),
+        quantityHuman: quantityRounded.toFixed(quantityPrecision).replace(/\.?0+$/, ''),
         marketPair,
         isLimitOrder,
       }

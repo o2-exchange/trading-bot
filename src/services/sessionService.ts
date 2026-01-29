@@ -391,8 +391,33 @@ class SessionService {
             return true
           }
 
-          // Validate session on-chain
-          const isValidOnChain = await manager.validateSession()
+          // Validate session on-chain with retry logic for transient errors
+          const maxRetries = 3
+          let lastError: Error | null = null
+          let isValidOnChain: boolean | null = null
+
+          for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+              isValidOnChain = await manager.validateSession()
+              break // Success, exit retry loop
+            } catch (error) {
+              lastError = error as Error
+              console.warn(`[SessionService] On-chain validation attempt ${attempt + 1}/${maxRetries} failed:`, error)
+              if (attempt < maxRetries - 1) {
+                // Wait before retry with exponential backoff
+                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)))
+              }
+            }
+          }
+
+          // If all retries failed, treat as invalid for safety
+          if (isValidOnChain === null) {
+            console.error(`[SessionService] On-chain validation failed after ${maxRetries} attempts: ${lastError?.message}. ` +
+              `Treating as invalid for safety.`)
+            // Cache as invalid to prevent repeated failed validations
+            this.validationCache.set(normalizedAccountId, { isValid: false, timestamp: Date.now() })
+            return false
+          }
 
           if (!isValidOnChain) {
             console.log('[SessionService] ❌ Session invalid on-chain - clearing session for this account')
@@ -410,13 +435,11 @@ class SessionService {
           // Cache valid result
           this.validationCache.set(normalizedAccountId, { isValid: true, timestamp: Date.now() })
         } catch (error) {
-          // Network error or other transient issue
-          // DON'T clear session - it looks valid locally
-          // Let actual trading fail if session is truly invalid
-          console.warn('[SessionService] On-chain validation error (treating as valid):', error)
-          // Cache as valid on error (don't keep retrying on every call)
-          this.validationCache.set(normalizedAccountId, { isValid: true, timestamp: Date.now() })
-          return true
+          // Unexpected error (not from validation API)
+          console.error('[SessionService] Unexpected validation error (treating as invalid):', error)
+          // Cache as invalid for safety
+          this.validationCache.set(normalizedAccountId, { isValid: false, timestamp: Date.now() })
+          return false
         }
       }
 

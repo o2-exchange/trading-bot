@@ -97,26 +97,43 @@ class OrderService {
     // IMPORTANT: We await this to ensure nonce is persisted before returning
     // This prevents nonce desync on browser crash/restart
     // NOTE: We reuse the session object from above to avoid another getActiveSession call
-    const persistNonce = async (retries = 3) => {
-      for (let i = 1; i <= retries; i++) {
-        try {
-          await tradingAccountService.updateNonce(
-            session.tradeAccountId,
-            parseInt(tradeAccountManager.nonce.toString())
-          )
-          console.log(`[OrderService] Nonce persisted successfully: ${tradeAccountManager.nonce.toString()}`)
-          return
-        } catch (e) {
-          console.warn(`[OrderService] Nonce persist attempt ${i}/${retries} failed:`, e)
-          if (i < retries) await new Promise(r => setTimeout(r, 100 * i)) // Exponential backoff
-        }
+    const newNonce = parseInt(tradeAccountManager.nonce.toString())
+    let noncePersisted = false
+
+    for (let i = 1; i <= 3; i++) {
+      try {
+        await tradingAccountService.updateNonce(session.tradeAccountId, newNonce)
+        console.log(`[OrderService] Nonce persisted successfully: ${newNonce}`)
+        noncePersisted = true
+        break
+      } catch (e) {
+        console.warn(`[OrderService] Nonce persist attempt ${i}/3 failed:`, e)
+        if (i < 3) await new Promise(r => setTimeout(r, 100 * i)) // Exponential backoff
       }
-      // Log error but don't throw - order was already placed successfully
-      console.error('[OrderService] Failed to persist nonce after all retries. Nonce may be out of sync on restart.')
     }
 
-    // Await nonce persistence to ensure database is updated before returning
-    await persistNonce()
+    // If nonce persistence failed, attempt recovery from chain
+    if (!noncePersisted) {
+      console.error('[OrderService] [CRITICAL] Nonce persistence failed. Attempting recovery from chain...')
+      try {
+        // Fetch latest nonce from API by getting a fresh TradeAccountManager
+        const freshManager = await sessionManagerService.getTradeAccountManager(normalizedAddress, true)
+        const chainNonce = parseInt(freshManager.nonce.toString())
+
+        // Update database with chain nonce
+        await tradingAccountService.updateNonce(session.tradeAccountId, chainNonce)
+
+        // Clear cached manager to force refresh on next order
+        sessionManagerService.clearManager(normalizedAddress, session.id)
+
+        console.log(`[OrderService] Nonce recovered from chain: ${chainNonce}`)
+      } catch (recoveryError) {
+        // Recovery failed - notify user but don't throw since order was placed
+        console.error('[OrderService] [CRITICAL] Nonce recovery failed:', recoveryError)
+        // Note: We don't throw here because the order was already placed successfully.
+        // The user may need to refresh the page to resync, but the order is valid.
+      }
+    }
 
     // Clear balance cache after order placement to ensure fresh data on next cycle
     // This prevents stale balance calculations for subsequent orders
@@ -198,6 +215,36 @@ class OrderService {
 
     // Increment nonce
     tradeAccountManager.incrementNonce()
+
+    // Persist nonce to database with retry logic (same as placeOrder)
+    const newNonce = parseInt(tradeAccountManager.nonce.toString())
+    let noncePersisted = false
+
+    for (let i = 1; i <= 3; i++) {
+      try {
+        await tradingAccountService.updateNonce(session.tradeAccountId, newNonce)
+        console.log(`[OrderService] Cancel nonce persisted successfully: ${newNonce}`)
+        noncePersisted = true
+        break
+      } catch (e) {
+        console.warn(`[OrderService] Cancel nonce persist attempt ${i}/3 failed:`, e)
+        if (i < 3) await new Promise(r => setTimeout(r, 100 * i))
+      }
+    }
+
+    // If nonce persistence failed, attempt recovery from chain
+    if (!noncePersisted) {
+      console.error('[OrderService] [CRITICAL] Cancel nonce persistence failed. Attempting recovery...')
+      try {
+        const freshManager = await sessionManagerService.getTradeAccountManager(normalizedAddress, true)
+        const chainNonce = parseInt(freshManager.nonce.toString())
+        await tradingAccountService.updateNonce(session.tradeAccountId, chainNonce)
+        sessionManagerService.clearManager(normalizedAddress, session.id)
+        console.log(`[OrderService] Cancel nonce recovered from chain: ${chainNonce}`)
+      } catch (recoveryError) {
+        console.error('[OrderService] [CRITICAL] Cancel nonce recovery failed:', recoveryError)
+      }
+    }
 
     // Update order status in database
     await db.orders.update(orderId, { status: OrderStatus.Cancelled })

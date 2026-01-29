@@ -7,6 +7,7 @@ import { orderService } from '../services/orderService'
 import { walletService } from '../services/walletService'
 import { marketService } from '../services/marketService'
 import { tradingEngine } from '../services/tradingEngine'
+import { formatRawPrice, formatRawQuantity, formatTotal as formatTotalValue } from '../utils/priceFormatter'
 import './OpenOrdersPanel.css'
 
 export default function OpenOrdersPanel() {
@@ -88,26 +89,23 @@ export default function OpenOrdersPanel() {
   const formatPrice = (price: string, marketId: string) => {
     const market = markets.get(marketId)
     if (!market) return price
-    const priceHuman = new Decimal(price).div(10 ** market.quote.decimals)
-    return `$${priceHuman.toFixed(2)}`
+    return formatRawPrice(price, market.quote.decimals)
   }
 
   const formatQuantity = (quantity: string, marketId: string) => {
     const market = markets.get(marketId)
     if (!market) return quantity
-    const qtyHuman = new Decimal(quantity).div(10 ** market.base.decimals)
-    return qtyHuman.toFixed(3).replace(/\.?0+$/, '')
+    return formatRawQuantity(quantity, market.base.decimals)
   }
 
   const formatTotal = (price: string, quantity: string, marketId: string) => {
     const market = markets.get(marketId)
     if (!market) return '-'
-    // Total = (price * quantity) / 10^(base_decimals + quote_decimals) * 10^quote_decimals
-    // Simplified: Total = (price * quantity) / 10^base_decimals
+    // Total = (price * quantity) / 10^(base_decimals + quote_decimals)
     const priceDecimal = new Decimal(price)
     const qtyDecimal = new Decimal(quantity)
     const total = priceDecimal.mul(qtyDecimal).div(10 ** (market.base.decimals + market.quote.decimals))
-    return `$${total.toFixed(2)}`
+    return formatTotalValue(total)
   }
 
   const formatTime = (timestamp: number) => {

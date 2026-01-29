@@ -5,6 +5,7 @@ import { tradeHistoryService } from '../services/tradeHistoryService'
 import { tradingEngine } from '../services/tradingEngine'
 import { marketService } from '../services/marketService'
 import { Market } from '../types/market'
+import { formatRawPrice, formatRawQuantity } from '../utils/priceFormatter'
 import './TradeHistory.css'
 
 export default function TradeHistory() {
@@ -18,45 +19,19 @@ export default function TradeHistory() {
     setTrades(recentTrades)
   }
 
-  const formatValue = (value: string, decimals: number = 18, maxDisplayDecimals: number = 8): string => {
-    try {
-      const bigIntValue = BigInt(value || '0')
-      const divisor = BigInt(10 ** decimals)
-
-      const integerPart = bigIntValue / divisor
-      const fractionalPart = bigIntValue % divisor
-
-      const fractionalStr = fractionalPart.toString().padStart(decimals, '0')
-      const fractionalTrimmed = fractionalStr.replace(/0+$/, '')
-
-      if (fractionalTrimmed === '') {
-        return integerPart.toString()
-      }
-
-      // Format with appropriate decimal places
-      const displayDecimals = Math.min(fractionalTrimmed.length, maxDisplayDecimals)
-      return `${integerPart}.${fractionalTrimmed.slice(0, displayDecimals)}`
-    } catch (error) {
-      console.error('Error formatting value:', error, value)
-      return value
-    }
-  }
-
   const formatPrice = (price: string, marketId: string, priceFill?: string): string => {
     const market = markets.get(marketId)
-    // Price is typically in quote token decimals
     const decimals = market?.quote?.decimals || 18
 
     // Prefer fill price if available, otherwise use limit price
     const priceToFormat = priceFill && priceFill !== '0' ? priceFill : price
-    return formatValue(priceToFormat, decimals)
+    return formatRawPrice(priceToFormat, decimals, { prefix: '' })
   }
 
   const formatQuantity = (quantity: string, marketId: string): string => {
     const market = markets.get(marketId)
-    // Quantity is in base token decimals, limit to 3 decimal places for display
     const decimals = market?.base?.decimals || 18
-    return formatValue(quantity, decimals, 3)
+    return formatRawQuantity(quantity, decimals)
   }
 
   const getPairName = (marketId: string): string => {
@@ -100,7 +75,8 @@ export default function TradeHistory() {
         const qtyBigInt = BigInt(trade.filledQuantity)
         // Total = price * qty / (10^baseDecimals) since price is already in quote decimals
         const totalBigInt = (priceBigInt * qtyBigInt) / BigInt(10 ** qtyDecimals)
-        const total = formatValue(totalBigInt.toString(), priceDecimals, 2)
+        // Convert to human-readable using formatRawPrice (without $ prefix since we add symbol)
+        const total = formatRawPrice(totalBigInt.toString(), priceDecimals, { prefix: '' })
         return `${total} ${quoteSymbol}`
       } catch {
         return `0.00 ${quoteSymbol}`
