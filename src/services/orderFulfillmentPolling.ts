@@ -7,8 +7,31 @@ import { OrderSide } from '../types/order'
 import { sessionService } from './sessionService'
 
 class OrderFulfillmentPolling {
-  private pollingIntervals: Map<string, number> = new Map()
-  private readonly POLL_INTERVAL_MS = 2500 // Poll every 2.5 seconds
+  private pollingTimeouts: Map<string, number> = new Map()
+  private pollingActive: Map<string, boolean> = new Map()
+  private readonly POLL_INTERVAL_MS = 1000 // Normal poll every 1 second (reduced from 2.5s)
+  private readonly FAST_POLL_INTERVAL_MS = 250 // Fast poll every 250ms
+  private fastPollUntil: Map<string, number> = new Map() // Per-market fast polling end time
+
+  /**
+   * Enable fast polling for a short period (e.g., after order placement).
+   * This reduces latency for detecting immediate fills.
+   */
+  enableFastPolling(marketId: string, durationMs: number = 5000): void {
+    this.fastPollUntil.set(marketId, Date.now() + durationMs)
+    console.log(`[OrderFulfillmentPolling] Fast polling enabled for ${marketId} for ${durationMs}ms`)
+  }
+
+  /**
+   * Get the current polling interval for a market
+   */
+  private getCurrentInterval(marketId: string): number {
+    const fastUntil = this.fastPollUntil.get(marketId) || 0
+    if (Date.now() < fastUntil) {
+      return this.FAST_POLL_INTERVAL_MS
+    }
+    return this.POLL_INTERVAL_MS
+  }
 
   /**
    * Start polling for order fills for a specific market
@@ -16,8 +39,12 @@ class OrderFulfillmentPolling {
   startPolling(marketId: string, ownerAddress: string): void {
     // Stop existing polling if any
     this.stopPolling(marketId)
+    this.pollingActive.set(marketId, true)
 
-    const intervalId = window.setInterval(async () => {
+    const poll = async () => {
+      if (!this.pollingActive.get(marketId)) {
+        return
+      }
       if (!tradingEngine.isActive()) {
         this.stopPolling(marketId)
         return
@@ -98,9 +125,18 @@ class OrderFulfillmentPolling {
       } catch (error) {
         console.error(`[OrderFulfillmentPolling] Error polling fills for market ${marketId}:`, error)
       }
-    }, this.POLL_INTERVAL_MS)
 
-    this.pollingIntervals.set(marketId, intervalId)
+      // Schedule next poll with dynamic interval
+      if (this.pollingActive.get(marketId)) {
+        const nextInterval = this.getCurrentInterval(marketId)
+        const timeoutId = window.setTimeout(poll, nextInterval)
+        this.pollingTimeouts.set(marketId, timeoutId)
+      }
+    }
+
+    // Start initial poll
+    const timeoutId = window.setTimeout(poll, this.getCurrentInterval(marketId))
+    this.pollingTimeouts.set(marketId, timeoutId)
     console.log(`[OrderFulfillmentPolling] Started polling for market ${marketId}`)
   }
 
@@ -108,22 +144,26 @@ class OrderFulfillmentPolling {
    * Stop polling for a specific market
    */
   stopPolling(marketId: string): void {
-    const intervalId = this.pollingIntervals.get(marketId)
-    if (intervalId) {
-      clearInterval(intervalId)
-      this.pollingIntervals.delete(marketId)
+    this.pollingActive.set(marketId, false)
+    const timeoutId = this.pollingTimeouts.get(marketId)
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      this.pollingTimeouts.delete(marketId)
       console.log(`[OrderFulfillmentPolling] Stopped polling for market ${marketId}`)
     }
+    this.fastPollUntil.delete(marketId)
   }
 
   /**
    * Stop all polling
    */
   stopAll(): void {
-    for (const [marketId, intervalId] of this.pollingIntervals) {
-      clearInterval(intervalId)
+    for (const [marketId, timeoutId] of this.pollingTimeouts) {
+      clearTimeout(timeoutId)
+      this.pollingActive.set(marketId, false)
     }
-    this.pollingIntervals.clear()
+    this.pollingTimeouts.clear()
+    this.fastPollUntil.clear()
     console.log('[OrderFulfillmentPolling] Stopped all polling')
   }
 
@@ -131,7 +171,7 @@ class OrderFulfillmentPolling {
    * Check if polling is active for a market
    */
   isPolling(marketId: string): boolean {
-    return this.pollingIntervals.has(marketId)
+    return this.pollingActive.get(marketId) || false
   }
 }
 

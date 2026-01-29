@@ -6,6 +6,7 @@ import { orderService } from '../services/orderService'
 import { walletService } from '../services/walletService'
 import { marketService } from '../services/marketService'
 import { tradingEngine } from '../services/tradingEngine'
+import { formatRawPrice, formatRawQuantity } from '../utils/priceFormatter'
 import './OrderHistory.css'
 
 export default function OrderHistory() {
@@ -88,15 +89,13 @@ export default function OrderHistory() {
   const formatPrice = (price: string, marketId: string) => {
     const market = markets.get(marketId)
     if (!market) return price
-    const priceHuman = new Decimal(price).div(10 ** market.quote.decimals)
-    return `$${priceHuman.toFixed(2)}`
+    return formatRawPrice(price, market.quote.decimals)
   }
 
   const formatQuantity = (quantity: string, marketId: string) => {
     const market = markets.get(marketId)
     if (!market) return quantity
-    const qtyHuman = new Decimal(quantity).div(10 ** market.base.decimals)
-    return `${qtyHuman.toFixed(3).replace(/\.?0+$/, '')} ${market.base.symbol}`
+    return `${formatRawQuantity(quantity, market.base.decimals)} ${market.base.symbol}`
   }
 
   const getMarketPair = (marketId: string) => {

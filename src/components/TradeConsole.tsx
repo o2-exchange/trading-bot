@@ -73,7 +73,8 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
               sessionId: session.id,
               totalVolume: session.totalVolume,
               totalFees: session.totalFees,
-              realizedPnL: session.realizedPnL,
+              realizedPnL: parseFloat(session.realizedPnL || '0') || 0,
+              unrealizedPnL: parseFloat(session.unrealizedPnL || '0') || 0,
               tradeCount: session.tradeCount,
               startingBaseBalance: session.startingBaseBalance ? `${session.startingBaseBalance} ${baseSymbol}` : null,
               startingQuoteBalance: session.startingQuoteBalance ? `$${session.startingQuoteBalance}` : null,
@@ -92,7 +93,8 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
               sessionId: session.id,
               totalVolume: session.totalVolume,
               totalFees: session.totalFees,
-              realizedPnL: session.realizedPnL,
+              realizedPnL: parseFloat(session.realizedPnL || '0') || 0,
+              unrealizedPnL: parseFloat(session.unrealizedPnL || '0') || 0,
               tradeCount: session.tradeCount,
               startingBaseBalance: session.startingBaseBalance ? `${session.startingBaseBalance} ${baseSymbol}` : null,
               startingQuoteBalance: session.startingQuoteBalance ? `$${session.startingQuoteBalance}` : null,
@@ -179,6 +181,7 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
               prevCtx.totalVolume !== newCtx.totalVolume ||
               prevCtx.totalFees !== newCtx.totalFees ||
               prevCtx.realizedPnL !== newCtx.realizedPnL ||
+              prevCtx.unrealizedPnL !== newCtx.unrealizedPnL ||
               prevCtx.tradeCount !== newCtx.tradeCount ||
               prevCtx.nextRunIn !== newCtx.nextRunIn ||
               prevCtx.openBuyOrders !== newCtx.openBuyOrders ||
@@ -390,8 +393,8 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
                     </span>
                     <span className="metric">
                       <span className="metric-label">{t('console.pnl')}</span>
-                      <span className={`metric-value ${(ctx.realizedPnL || 0) >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
-                        {(ctx.realizedPnL || 0) >= 0 ? '+' : ''}${(ctx.realizedPnL || 0).toFixed(2)}
+                      <span className={`metric-value ${((ctx.realizedPnL || 0) + (ctx.unrealizedPnL || 0)) >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
+                        {((ctx.realizedPnL || 0) + (ctx.unrealizedPnL || 0)) >= 0 ? '+' : ''}${((ctx.realizedPnL || 0) + (ctx.unrealizedPnL || 0)).toFixed(2)}
                       </span>
                     </span>
                     <span className="metric">
