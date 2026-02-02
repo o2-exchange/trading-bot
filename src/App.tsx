@@ -1,21 +1,23 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { WagmiProvider } from 'wagmi'
 import { Analytics } from '@vercel/analytics/react'
-import Dashboard from './components/Dashboard'
+import AppLayout from './components/AppLayout'
+import TradingEngineManager from './components/TradingEngineManager'
+import DashboardPage from './components/pages/DashboardPage'
+import TradesPage from './components/pages/TradesPage'
+import TutorialsPage from './components/pages/TutorialsPage'
 import { WalletConnectionWatcher } from './components/WalletConnectionWatcher'
 import { MobileRestrictionOverlay } from './components/MobileRestrictionOverlay'
 import { walletService, wagmiConfig } from './services/walletService'
-import { useWalletStore } from './stores/useWalletStore'
 import { ToastProvider } from './components/ToastProvider'
 
 function App() {
   const { t } = useTranslation()
-  const connectedWallet = useWalletStore((state) => state.connectedWallet)
   const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
-    // Restore connection on mount
     const restoreConnection = async () => {
       try {
         await walletService.restoreConnection()
@@ -59,13 +61,20 @@ function App() {
   return (
     <WagmiProvider config={wagmiConfig}>
       <ToastProvider>
-        <WalletConnectionWatcher />
-        <div className="app">
-          <Dashboard
-            isWalletConnected={!!connectedWallet}
-            onDisconnect={() => walletService.disconnect()}
-          />
-        </div>
+        <BrowserRouter>
+          <WalletConnectionWatcher />
+          <TradingEngineManager />
+          <div className="app">
+            <Routes>
+              <Route element={<AppLayout />}>
+                <Route index element={<DashboardPage />} />
+                <Route path="trades" element={<TradesPage />} />
+                <Route path="tutorials" element={<TutorialsPage />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
+            </Routes>
+          </div>
+        </BrowserRouter>
         <Analytics />
         <MobileRestrictionOverlay />
       </ToastProvider>
@@ -74,4 +83,3 @@ function App() {
 }
 
 export default App
-
