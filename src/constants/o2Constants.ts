@@ -19,3 +19,6 @@ export const DEFAULT_PRECISION = 100
 // Hide USDT markets and balances from UI (set to false when USDT is fully available)
 export const HIDE_USDT_IN_UI = false
 
+// Hide MOOR markets and balances from UI
+export const HIDE_MOOR_IN_UI = true
+

@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { TradingAccountBalances, Balance } from '../types/tradingAccount'
-import { HIDE_USDT_IN_UI } from '../constants/o2Constants'
+import { HIDE_USDT_IN_UI, HIDE_MOOR_IN_UI } from '../constants/o2Constants'
 import './Balances.css'
 
 interface BalancesProps {
@@ -69,6 +69,7 @@ export default function Balances({ balances, loading }: BalancesProps) {
         <tbody>
           {balances.balances
             .filter((balance) => !HIDE_USDT_IN_UI || balance.assetSymbol !== 'USDT')
+            .filter((balance) => !HIDE_MOOR_IN_UI || balance.assetSymbol !== 'MOOR')
             .map((balance: Balance) => (
             <tr key={balance.assetId}>
               <td>{balance.assetSymbol}</td>
