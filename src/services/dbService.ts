@@ -47,6 +47,9 @@ export class O2TradingBotDB extends Dexie {
 
   constructor() {
     super('O2TradingBotDB')
+    this.on('blocked', () => {
+      console.warn('[dbService] Database upgrade blocked by another connection')
+    })
     this.version(1).stores({
       sessions: 'id, tradeAccountId, ownerAddress, createdAt',
       sessionKeys: 'id, createdAt',
@@ -97,5 +100,31 @@ export class O2TradingBotDB extends Dexie {
   }
 }
 
-export const db = new O2TradingBotDB()
+// Mutable so resetDatabase() can swap in a fresh instance.
+// ES module live bindings ensure all importers see the new value.
+// eslint-disable-next-line import/no-mutable-exports
+export let db: O2TradingBotDB = new O2TradingBotDB()
+
+const DB_NAME = 'O2TradingBotDB'
+
+/**
+ * Deletes and recreates the Dexie database using the native IndexedDB API.
+ * The Dexie instance methods (db.delete/db.open) fail when the instance is
+ * in a DatabaseClosedError state, so we bypass Dexie entirely.
+ */
+export async function resetDatabase(): Promise<void> {
+  // 1. Close the broken instance (ignore errors — it may already be dead)
+  try { db.close() } catch (_) { /* ignore */ }
+
+  // 2. Delete via native API — works even when Dexie is broken
+  await new Promise<void>((resolve) => {
+    const req = indexedDB.deleteDatabase(DB_NAME)
+    req.onsuccess = () => resolve()
+    req.onerror = () => resolve()   // proceed anyway
+    req.onblocked = () => resolve() // proceed anyway
+  })
+
+  // 3. Replace the singleton with a fresh instance
+  db = new O2TradingBotDB()
+}
 

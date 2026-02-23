@@ -8,6 +8,7 @@ import { walletService } from './walletService'
 import { marketService } from './marketService'
 import { whitelistService } from './whitelistService'
 import { TradingAccount } from '../types/tradingAccount'
+import { db } from './dbService'
 
 export type AuthFlowState =
   | 'idle'
@@ -112,6 +113,43 @@ class AuthFlowService {
     this.abortController = new AbortController()
     this.isFlowRunning = true
 
+    // Pre-flight: ensure IndexedDB is accessible before running the flow.
+    // After browser "Delete data", the backing store is temporarily gone.
+    // indexedDB.open() itself throws UnknownError — no JS-level fix works
+    // on the same page load. The only reliable recovery is a page reload
+    // which gives the browser time to rebuild the backing store.
+    try {
+      await db.sessions.count()
+      // DB works — clear any leftover recovery counter
+      try { sessionStorage.removeItem('o2-db-recovery') } catch (_) { /* ignore */ }
+    } catch (dbError) {
+      console.warn('[AuthFlow] Database not accessible:', dbError)
+
+      // Best-effort: delete the database via native API before reloading
+      try { db.close() } catch (_) { /* ignore */ }
+      try {
+        await new Promise<void>((resolve) => {
+          const req = indexedDB.deleteDatabase('O2TradingBotDB')
+          req.onsuccess = () => resolve()
+          req.onerror = () => resolve()
+          req.onblocked = () => resolve()
+        })
+      } catch (_) { /* ignore */ }
+
+      // Reload page to get a fresh backing store. Counter prevents infinite loops.
+      const RECOVERY_KEY = 'o2-db-recovery'
+      const attempts = parseInt(sessionStorage.getItem(RECOVERY_KEY) || '0')
+      if (attempts < 3) {
+        sessionStorage.setItem(RECOVERY_KEY, String(attempts + 1))
+        window.location.reload()
+        // Halt execution — reload is async, this prevents the auth flow
+        // (and other code) from continuing to hit the broken DB.
+        await new Promise<void>(() => {})
+      }
+      // Max reload attempts exhausted, clear counter and let flow fail naturally
+      sessionStorage.removeItem(RECOVERY_KEY)
+    }
+
     try {
       const wallet = walletService.getConnectedWallet()
       if (!wallet) {
@@ -159,7 +197,6 @@ class AuthFlowService {
       await this.checkSituation()
     } catch (error: any) {
       console.error('[AuthFlow] Error in startFlow:', error)
-      // Set error state so UI can show retry button
       this.setState({
         state: 'error',
         error: error.message || 'Failed to start authentication flow',

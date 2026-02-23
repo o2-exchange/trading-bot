@@ -2,7 +2,7 @@ import { useSessionStore } from '../stores/useSessionStore'
 import { useTermsOfUseStore } from '../stores/useTermsOfUseStore'
 import { usePrivateKeysStore } from '../stores/usePrivateKeysStore'
 import { useTradingAccountAddressesStore } from '../stores/useTradingAccountAddressesStore'
-import { db } from '../services/dbService'
+import { db, resetDatabase } from '../services/dbService'
 
 /**
  * Clears user data when disconnecting wallet
@@ -91,20 +91,21 @@ export async function clearAllSessionStorage(): Promise<void> {
   const sessionStore = useSessionStore.getState()
   sessionStore.clearSessions()
 
-  // 2. Clear IndexedDB sessions table
+  // 2. Clear IndexedDB sessions and sessionKeys tables
+  // If individual table clears fail (corrupted DB), fall back to full DB reset
   try {
     await db.sessions.clear()
     console.log('[clearUserStorage] IndexedDB sessions cleared')
-  } catch (error) {
-    console.warn('[clearUserStorage] Failed to clear IndexedDB sessions:', error)
-  }
-
-  // 3. Clear IndexedDB sessionKeys table
-  try {
     await db.sessionKeys.clear()
     console.log('[clearUserStorage] IndexedDB sessionKeys cleared')
   } catch (error) {
-    console.warn('[clearUserStorage] Failed to clear IndexedDB sessionKeys:', error)
+    console.warn('[clearUserStorage] Failed to clear IndexedDB tables, attempting full DB reset:', error)
+    try {
+      await resetDatabase()
+      console.log('[clearUserStorage] Database reset successful')
+    } catch (resetError) {
+      console.error('[clearUserStorage] Database reset also failed:', resetError)
+    }
   }
 
   // 4. Clear private keys store
@@ -149,3 +150,4 @@ export async function resetStrategyConfigs(): Promise<void> {
     console.warn('[clearUserStorage] Failed to clear processed fills:', error)
   }
 }
+
