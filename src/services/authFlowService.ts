@@ -8,7 +8,7 @@ import { walletService } from './walletService'
 import { marketService } from './marketService'
 import { whitelistService } from './whitelistService'
 import { TradingAccount } from '../types/tradingAccount'
-import { db } from './dbService'
+import { db, resetDatabase } from './dbService'
 
 export type AuthFlowState =
   | 'idle'
@@ -114,40 +114,40 @@ class AuthFlowService {
     this.isFlowRunning = true
 
     // Pre-flight: ensure IndexedDB is accessible before running the flow.
-    // After browser "Delete data", the backing store is temporarily gone.
-    // indexedDB.open() itself throws UnknownError — no JS-level fix works
-    // on the same page load. The only reliable recovery is a page reload
-    // which gives the browser time to rebuild the backing store.
+    // After browser "Delete data", the backing store may be temporarily gone.
     try {
       await db.sessions.count()
       // DB works — clear any leftover recovery counter
       try { sessionStorage.removeItem('o2-db-recovery') } catch (_) { /* ignore */ }
     } catch (dbError) {
-      console.warn('[AuthFlow] Database not accessible:', dbError)
+      console.warn('[AuthFlow] Database not accessible, attempting recovery:', dbError)
 
-      // Best-effort: delete the database via native API before reloading
-      try { db.close() } catch (_) { /* ignore */ }
+      // Always replace the singleton with a fresh instance.
+      // resetDatabase() does: db.close() → native indexedDB.deleteDatabase() → db = new instance
+      // This ensures we never run against a permanently closed Dexie instance.
+      await resetDatabase()
+
+      // Check if the fresh instance works
       try {
-        await new Promise<void>((resolve) => {
-          const req = indexedDB.deleteDatabase('O2TradingBotDB')
-          req.onsuccess = () => resolve()
-          req.onerror = () => resolve()
-          req.onblocked = () => resolve()
-        })
-      } catch (_) { /* ignore */ }
-
-      // Reload page to get a fresh backing store. Counter prevents infinite loops.
-      const RECOVERY_KEY = 'o2-db-recovery'
-      const attempts = parseInt(sessionStorage.getItem(RECOVERY_KEY) || '0')
-      if (attempts < 3) {
-        sessionStorage.setItem(RECOVERY_KEY, String(attempts + 1))
-        window.location.reload()
-        // Halt execution — reload is async, this prevents the auth flow
-        // (and other code) from continuing to hit the broken DB.
-        await new Promise<void>(() => {})
+        await db.sessions.count()
+        console.log('[AuthFlow] Database recovered after reset')
+        try { sessionStorage.removeItem('o2-db-recovery') } catch (_) { /* ignore */ }
+      } catch (_) {
+        // Fresh instance also broken — browser backing store is still unavailable.
+        // A page reload gives the browser time to rebuild it.
+        const RECOVERY_KEY = 'o2-db-recovery'
+        let attempts = 0
+        try { attempts = parseInt(sessionStorage.getItem(RECOVERY_KEY) || '0') } catch (_e) { /* ignore */ }
+        if (attempts < 3) {
+          try { sessionStorage.setItem(RECOVERY_KEY, String(attempts + 1)) } catch (_e) { /* ignore */ }
+          console.warn('[AuthFlow] Reloading page for DB recovery, attempt', attempts + 1)
+          window.location.reload()
+          await new Promise<void>(() => {}) // halt execution until browser navigates
+        }
+        // Exhausted reload attempts — clear counter, continue with best-effort
+        try { sessionStorage.removeItem(RECOVERY_KEY) } catch (_e) { /* ignore */ }
+        console.warn('[AuthFlow] DB recovery exhausted, continuing with degraded state')
       }
-      // Max reload attempts exhausted, clear counter and let flow fail naturally
-      sessionStorage.removeItem(RECOVERY_KEY)
     }
 
     try {
