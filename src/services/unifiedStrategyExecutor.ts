@@ -442,8 +442,20 @@ class UnifiedStrategyExecutor {
       // Calculate prices based on price mode
       const prices = this.calculatePrices(market, ticker, orderBook, config.orderConfig)
       
-      // Place buy orders if configured and not at max limit
-      if (shouldPlaceBuy && (config.orderConfig.side === 'Buy' || config.orderConfig.side === 'Both')) {
+      // Determine if both buy and sell will be placed this cycle
+      const willPlaceBuy = shouldPlaceBuy && (config.orderConfig.side === 'Buy' || config.orderConfig.side === 'Both')
+      const willPlaceSell = shouldPlaceSell && (config.orderConfig.side === 'Sell' || config.orderConfig.side === 'Both')
+
+      // Pre-fetch fresh config from DB in parallel with buy order placement
+      // This is needed for sell order's profit protection (averageBuyPrice)
+      // By starting the DB read early, we save ~5-20ms when both buy and sell run
+      let freshConfigPromise: Promise<any> | null = null
+      if (willPlaceSell) {
+        freshConfigPromise = db.strategyConfigs.get(market.market_id)
+      }
+
+      // Place buy order
+      if (willPlaceBuy) {
         const buyOrder = await this.placeBuyOrder(
           market,
           config,
@@ -458,13 +470,14 @@ class UnifiedStrategyExecutor {
         }
       }
 
-      // Place sell orders if configured and not at max limit
-      if (shouldPlaceSell && (config.orderConfig.side === 'Sell' || config.orderConfig.side === 'Both')) {
-        // Read fresh config from database to ensure we have latest averageBuyPrice
-        // This is critical for profit protection logic
-        const storedConfig = await db.strategyConfigs.get(market.market_id)
+      // Place sell order
+      // When buy was placed first in same cycle, skip the API nonce re-fetch (~200ms saved)
+      // The buy order already incremented the nonce locally, so the cached value is correct
+      if (willPlaceSell) {
+        const storedConfig = freshConfigPromise ? await freshConfigPromise : null
         const configToUse = storedConfig?.config || config
-        
+        const buyPlacedFirst = willPlaceBuy // sell can skip nonce refresh if buy went first
+
         const sellOrder = await this.placeSellOrder(
           market,
           configToUse,
@@ -473,7 +486,8 @@ class UnifiedStrategyExecutor {
           ticker,
           orderBook,
           ownerAddress,
-          prefetchedData?.sellTimeoutCount || 0
+          prefetchedData?.sellTimeoutCount || 0,
+          buyPlacedFirst
         )
         if (sellOrder) {
           orders.push(sellOrder)
@@ -559,8 +573,19 @@ class UnifiedStrategyExecutor {
     // Apply offset
     // Buy BELOW reference price (subtract offset) - pay less
     // Sell ABOVE reference price (add offset) - receive more
-    const buyPrice = referencePrice.mul(1 - (orderConfig.priceOffsetPercent / 100))
-    const sellPrice = referencePrice.mul(1 + (orderConfig.priceOffsetPercent / 100))
+    let buyPrice = referencePrice.mul(1 - (orderConfig.priceOffsetPercent / 100))
+    let sellPrice = referencePrice.mul(1 + (orderConfig.priceOffsetPercent / 100))
+
+    // Apply price randomization if enabled
+    // Each side gets an independent random factor within the configured range
+    // Downstream tick-size alignment (scaleUpAndTruncateToInt) handles precision
+    if (orderConfig.priceRandomizationEnabled && orderConfig.priceRandomizationRangePercent) {
+      const range = orderConfig.priceRandomizationRangePercent / 100
+      const buyRandomFactor = 1 + (Math.random() * 2 - 1) * range
+      const sellRandomFactor = 1 + (Math.random() * 2 - 1) * range
+      buyPrice = buyPrice.mul(buyRandomFactor)
+      sellPrice = sellPrice.mul(sellRandomFactor)
+    }
 
     return { buyPrice, sellPrice }
   }
@@ -854,7 +879,8 @@ class UnifiedStrategyExecutor {
     ticker: any,
     orderBook: any,
     ownerAddress: string,
-    sellTimeoutCount: number = 0
+    sellTimeoutCount: number = 0,
+    skipNonceRefresh: boolean = false
   ): Promise<OrderExecution | null> {
     // Use takeProfitPercent from config, default to 0.02% (round-trip fees: 0.01% buy + 0.01% sell)
     const takeProfitRate = (config.riskManagement?.takeProfitPercent ?? 0.02) / 100
@@ -1005,7 +1031,8 @@ class UnifiedStrategyExecutor {
         orderType,
         sellPriceScaled,
         quantityScaled,
-        ownerAddress
+        ownerAddress,
+        skipNonceRefresh
       )
 
       console.log('[UnifiedStrategyExecutor] Sell order placed:', {

@@ -50,6 +50,10 @@
   white-space: nowrap;
 }
 
+.highlight-text {
+  color: var(--primary);
+}
+
 .active-badge {
   display: inline-flex;
   align-items: center;

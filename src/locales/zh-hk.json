@@ -21,7 +21,9 @@
     "copied_to_clipboard": "已複製到剪貼簿",
     "copied": "已複製到剪貼簿",
     "failed_to_copy": "複製失敗",
-    "copy_failed": "複製失敗"
+    "copy_failed": "複製失敗",
+    "export_csv": "匯出CSV",
+    "no_data_to_export": "沒有可匯出的資料"
   },
   "header": {
     "title": "o2 交易機械人",
@@ -169,6 +171,8 @@
       "price_offset": "價格偏移 %",
       "max_spread": "最大價差 %",
       "max_open_orders": "最大未結訂單數",
+      "price_randomization": "價格隨機化",
+      "price_randomization_range": "範圍 %",
       "limit_required": "賣出高於買入時需要限價單"
     },
     "position_sizing": {

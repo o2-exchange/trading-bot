@@ -114,6 +114,8 @@ const TOOLTIPS = {
   priceOffsetPercent: "Percentage offset from reference price. For buys, adds to price (buy higher). For sells, subtracts from price (sell lower). 0% = exact reference price.",
   maxSpreadPercent: "Maximum bid-ask spread allowed. If spread exceeds this, no orders are placed. Prevents trading in illiquid markets.",
   maxOpenOrders: "Maximum open orders per side. E.g., 2 means max 2 buy orders + 2 sell orders at once. Prevents over-exposure.",
+  priceRandomization: "Add random jitter to order prices each cycle. Creates a natural spread of prices instead of identical orders. Effective range depends on market tick size.",
+  priceRandomizationRange: "Maximum random offset applied to each order price (e.g., 0.05 = +/-0.05%). Each order gets an independent random factor.",
 
   // Position Sizing
   sizeMode: "% Balance: Use percentage of available balance. Fixed USD: Use fixed dollar amount per order.",
@@ -1265,6 +1267,32 @@ function StrategyConfigForm({
             isInteger
           />
         </div>
+      </div>
+
+      {/* Price Randomization */}
+      <div className="form-row">
+        <div className="form-field">
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={config.orderConfig.priceRandomizationEnabled ?? false}
+              onChange={(e) => updateOrderConfig({ priceRandomizationEnabled: e.target.checked })}
+            />
+            <span className="label-with-tooltip">{t('strategy.price_randomization')} <Tooltip text={TOOLTIPS.priceRandomization} /></span>
+          </label>
+        </div>
+        {config.orderConfig.priceRandomizationEnabled && (
+          <div className="form-field">
+            <label className="label-with-tooltip">{t('strategy.price_randomization_range')} <Tooltip text={TOOLTIPS.priceRandomizationRange} /></label>
+            <NumberInput
+              value={config.orderConfig.priceRandomizationRangePercent ?? 0.05}
+              onChange={(value) => updateOrderConfig({ priceRandomizationRangePercent: value })}
+              min={0.001}
+              max={5}
+              step={0.01}
+            />
+          </div>
+        )}
       </div>
 
       <div className="form-divider" />

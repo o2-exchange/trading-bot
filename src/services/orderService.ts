@@ -19,10 +19,11 @@ class OrderService {
     orderType: OrderType,
     price: string,
     quantity: string,
-    ownerAddress: string
+    ownerAddress: string,
+    skipNonceRefresh: boolean = false
   ): Promise<Order> {
     try {
-      return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress)
+      return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress, skipNonceRefresh)
     } catch (error: any) {
       // On 400 error (InvalidSignature / nonce desync / session conflict), retry once with fresh state
       if (error?.response?.status === 400) {
@@ -40,9 +41,9 @@ class OrderService {
           sessionManagerService.clearManager(normalizedAddress, session.id)
         }
 
-        // Retry once with fresh state
+        // Retry once with fresh state (always refresh nonce on retry)
         try {
-          return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress)
+          return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress, false)
         } catch (retryError: any) {
           console.error('[OrderService] Retry after 400 also failed:', retryError?.message)
           throw retryError
@@ -58,7 +59,8 @@ class OrderService {
     orderType: OrderType,
     price: string,
     quantity: string,
-    ownerAddress: string
+    ownerAddress: string,
+    skipNonceRefresh: boolean = false
   ): Promise<Order> {
     // Normalize address
     const normalizedAddress = ownerAddress.toLowerCase()
@@ -74,8 +76,10 @@ class OrderService {
       throw new Error(`Market ${market.market_id} is not in session's allowed contracts`)
     }
 
-    // Get TradeAccountManager - fetch latest nonce from API before placing order (matching O2 frontend)
-    const tradeAccountManager = await sessionManagerService.getTradeAccountManager(normalizedAddress, true)
+    // Get TradeAccountManager
+    // When skipNonceRefresh=true (e.g., sell order right after buy in same cycle),
+    // use the locally incremented nonce instead of re-fetching from API (~200ms saved)
+    const tradeAccountManager = await sessionManagerService.getTradeAccountManager(normalizedAddress, !skipNonceRefresh)
 
     // Create order action
     const orderAction: CreateOrderAction = {

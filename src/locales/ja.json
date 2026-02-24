@@ -21,7 +21,9 @@
     "copied_to_clipboard": "クリップボードにコピーしました",
     "copied": "クリップボードにコピーしました",
     "failed_to_copy": "コピーに失敗しました",
-    "copy_failed": "コピーに失敗しました"
+    "copy_failed": "コピーに失敗しました",
+    "export_csv": "CSVエクスポート",
+    "no_data_to_export": "エクスポートするデータがありません"
   },
   "header": {
     "title": "o2 トレーディングボット",
@@ -169,6 +171,8 @@
       "price_offset": "価格オフセット %",
       "max_spread": "最大スプレッド %",
       "max_open_orders": "最大未決済注文数",
+      "price_randomization": "価格ランダム化",
+      "price_randomization_range": "範囲 %",
       "limit_required": "売りが買値を上回る場合は指値が必要"
     },
     "position_sizing": {

@@ -131,6 +131,30 @@
   }
 }
 
+/* Ping Indicator */
+.console-ping {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.console-ping.good {
+  color: var(--success, #22c55e);
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.console-ping.moderate {
+  color: var(--warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.15);
+}
+
+.console-ping.poor {
+  color: var(--destructive, #ef4444);
+  background: rgba(239, 68, 68, 0.15);
+}
+
 /* Dashboard Styles */
 .console-dashboard {
   padding: 8px 12px;

@@ -21,7 +21,9 @@
     "copied_to_clipboard": "클립보드에 복사됨",
     "copied": "클립보드에 복사됨",
     "failed_to_copy": "복사 실패",
-    "copy_failed": "복사 실패"
+    "copy_failed": "복사 실패",
+    "export_csv": "CSV 내보내기",
+    "no_data_to_export": "내보낼 데이터가 없습니다"
   },
   "header": {
     "title": "o2 트레이딩 봇",
@@ -169,6 +171,8 @@
       "price_offset": "가격 오프셋 %",
       "max_spread": "최대 스프레드 %",
       "max_open_orders": "최대 미체결 주문",
+      "price_randomization": "가격 랜덤화",
+      "price_randomization_range": "범위 %",
       "limit_required": "매수가 이상 매도 시 지정가 필요"
     },
     "position_sizing": {

@@ -16,6 +16,10 @@ export interface OrderConfig {
   
   // Order Side
   side: 'Buy' | 'Sell' | 'Both' // Both = place buy and sell orders
+
+  // Price Randomization
+  priceRandomizationEnabled?: boolean // Add random jitter to order prices each cycle
+  priceRandomizationRangePercent?: number // Max % random offset (e.g., 0.05 = +/-0.05%)
 }
 
 // ============================================
@@ -135,6 +139,8 @@ export function getDefaultStrategyConfig(marketId: string): StrategyConfig {
       priceOffsetPercent: 0.1, // 0.1% from mid price
       maxSpreadPercent: 2.0, // Don't trade if spread > 2%
       side: 'Both', // Place both buy and sell orders
+      priceRandomizationEnabled: false,
+      priceRandomizationRangePercent: 0.05, // +/-0.05% default
     },
     
     positionSizing: {

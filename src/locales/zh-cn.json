@@ -21,7 +21,9 @@
     "copied_to_clipboard": "已复制到剪贴板",
     "copied": "已复制到剪贴板",
     "failed_to_copy": "复制失败",
-    "copy_failed": "复制失败"
+    "copy_failed": "复制失败",
+    "export_csv": "导出CSV",
+    "no_data_to_export": "没有可导出的数据"
   },
   "header": {
     "title": "o2 交易机器人",
@@ -169,6 +171,8 @@
       "price_offset": "价格偏移 %",
       "max_spread": "最大价差 %",
       "max_open_orders": "最大未结订单数",
+      "price_randomization": "价格随机化",
+      "price_randomization_range": "范围 %",
       "limit_required": "卖出高于买入时需要限价单"
     },
     "position_sizing": {

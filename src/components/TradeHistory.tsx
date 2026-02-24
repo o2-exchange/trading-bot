@@ -6,6 +6,7 @@ import { tradingEngine } from '../services/tradingEngine'
 import { marketService } from '../services/marketService'
 import { Market } from '../types/market'
 import { formatRawPrice, formatRawQuantity } from '../utils/priceFormatter'
+import { exportTradesCSV } from '../utils/csvExport'
 import './TradeHistory.css'
 
 export default function TradeHistory() {
@@ -145,9 +146,21 @@ export default function TradeHistory() {
     return status.charAt(0).toUpperCase() + status.slice(1)
   }
 
+  const handleExportCSV = async () => {
+    const count = await exportTradesCSV()
+    if (count === 0) {
+      alert(t('common.no_data_to_export'))
+    }
+  }
+
   return (
     <div className="trade-history">
-      <h2>{t('trade_history.title')}</h2>
+      <div className="trade-history-header">
+        <h2>{t('trade_history.title')}</h2>
+        <button className="btn-secondary btn-sm" onClick={handleExportCSV} title={t('common.export_csv')}>
+          {t('common.export_csv')}
+        </button>
+      </div>
       {trades.length === 0 ? (
         <div className="empty-state">{t('trade_history.no_trades')}</div>
       ) : (

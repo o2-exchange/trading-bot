@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { tradingEngine, TradingContext } from '../services/tradingEngine'
+import { latencyService } from '../services/latencyService'
 import { tradingSessionService } from '../services/tradingSessionService'
 import { walletService } from '../services/walletService'
 import './TradeConsole.css'
@@ -25,8 +26,12 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
   const [countdown, setCountdown] = useState<number>(0)
   const [sessionRestored, setSessionRestored] = useState(false)
   const [consoleMode, setConsoleMode] = useState<'simple' | 'debug'>('simple')
+  const [latency, setLatency] = useState<number>(0)
   const consoleRef = useRef<HTMLDivElement>(null)
 
+  useEffect(() => {
+    return latencyService.onChange(setLatency)
+  }, [])
 
   // Helper to get first context (for countdown and pending order display)
   const firstContext = contexts.size > 0 ? Array.from(contexts.values())[0] : null
@@ -322,6 +327,11 @@ export default function TradeConsole({ isTrading, onViewOrders }: TradeConsolePr
           {isTrading && countdown > 0 && (
             <span className="console-countdown">
               {t('console.next_countdown', { seconds: countdown })}
+            </span>
+          )}
+          {latency > 0 && (
+            <span className={`console-ping ${latency < 200 ? 'good' : latency < 500 ? 'moderate' : 'poor'}`}>
+              {latency}ms
             </span>
           )}
           <span className={`console-status ${isTrading ? 'active' : 'inactive'}`}>

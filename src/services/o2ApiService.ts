@@ -8,6 +8,7 @@ import { BalanceApiResponse } from '../types/tradingAccount'
 import { O2_API_URL } from '../constants/o2Constants'
 import { walletService } from './walletService'
 import { Decimal } from 'decimal.js'
+import { latencyService } from './latencyService'
 
 export interface CreateTradingAccountRequest {
   identity: {
@@ -166,9 +167,21 @@ class O2ApiService {
       },
     })
 
-    // Add response interceptor for 429 rate limiting errors
+    // Track request start time for latency measurement
+    this.client.interceptors.request.use((config) => {
+      ;(config as any)._startTime = Date.now()
+      return config
+    })
+
+    // Add response interceptor for latency tracking and 429 rate limiting
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        const start = (response.config as any)._startTime
+        if (start) {
+          latencyService.record(Date.now() - start)
+        }
+        return response
+      },
       async (error) => {
         const config = error.config
 
