@@ -183,6 +183,17 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
     )
   }
 
+  const renderHighlightedText = (text: string) => {
+    const parts = text.split(/(<highlight>.*?<\/highlight>)/g)
+    return parts.map((part, i) => {
+      const match = part.match(/^<highlight>(.*)<\/highlight>$/)
+      if (match) {
+        return <span key={i} className="highlight-text">{match[1]}</span>
+      }
+      return part
+    })
+  }
+
   const currentUser = leaderboardData?.currentUser
 
   return (
@@ -191,7 +202,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
         {/* Left: Title, subtitle, leaderboard link */}
         <div className="competition-info">
           <div className="competition-title-row">
-            <h2 className="competition-title">{activeCompetition.title}</h2>
+            <h2 className="competition-title">{renderHighlightedText(activeCompetition.title)}</h2>
             <span className="active-badge">{t('competition.active')}</span>
           </div>
           {activeCompetition.subtitle && (
