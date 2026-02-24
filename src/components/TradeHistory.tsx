@@ -13,11 +13,42 @@ export default function TradeHistory() {
   const { t } = useTranslation()
   const [trades, setTrades] = useState<Trade[]>([])
   const [markets, setMarkets] = useState<Map<string, Market>>(new Map())
+  const [filterMarket, setFilterMarket] = useState<string>('')
+  const [filterSide, setFilterSide] = useState<string>('')
+  const [filterStatus, setFilterStatus] = useState<string>('')
+  const [filterTimeRange, setFilterTimeRange] = useState<string>('')
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
+  const hasFilters = filterMarket || filterSide || filterStatus || filterTimeRange
+
+  const getTimeRange = (): { startTime?: number; endTime?: number } => {
+    if (!filterTimeRange) return {}
+    const now = Date.now()
+    const ranges: Record<string, number> = {
+      '1h': 60 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+    }
+    const ms = ranges[filterTimeRange]
+    return ms ? { startTime: now - ms, endTime: now } : {}
+  }
+
   const loadTrades = async () => {
-    const recentTrades = await tradeHistoryService.getRecentTrades(50)
-    setTrades(recentTrades)
+    if (hasFilters) {
+      const { startTime, endTime } = getTimeRange()
+      const filtered = await tradeHistoryService.getFilteredTrades({
+        marketId: filterMarket || undefined,
+        side: filterSide || undefined,
+        status: filterStatus || undefined,
+        startTime,
+        endTime,
+      })
+      setTrades(filtered)
+    } else {
+      const recentTrades = await tradeHistoryService.getRecentTrades(50)
+      setTrades(recentTrades)
+    }
   }
 
   const formatPrice = (price: string, marketId: string, priceFill?: string): string => {
@@ -85,6 +116,11 @@ export default function TradeHistory() {
     }
     return `0.00 ${quoteSymbol}`
   }
+
+  // Reload when filters change
+  useEffect(() => {
+    loadTrades()
+  }, [filterMarket, filterSide, filterStatus, filterTimeRange])
 
   useEffect(() => {
     // Load markets first, then trades
@@ -161,8 +197,66 @@ export default function TradeHistory() {
           {t('common.export_csv')}
         </button>
       </div>
+      <div className="filters">
+        <select
+          className="filter-select"
+          value={filterTimeRange}
+          onChange={(e) => setFilterTimeRange(e.target.value)}
+        >
+          <option value="">{t('trade_history.all_time')}</option>
+          <option value="1h">{t('trade_history.last_1h')}</option>
+          <option value="24h">{t('trade_history.last_24h')}</option>
+          <option value="7d">{t('trade_history.last_7d')}</option>
+          <option value="30d">{t('trade_history.last_30d')}</option>
+        </select>
+        <select
+          className="filter-select"
+          value={filterMarket}
+          onChange={(e) => setFilterMarket(e.target.value)}
+        >
+          <option value="">{t('trade_history.all_markets')}</option>
+          {Array.from(markets.values()).map(m => (
+            <option key={m.market_id} value={m.market_id}>
+              {m.base.symbol}/{m.quote.symbol}
+            </option>
+          ))}
+        </select>
+        <select
+          className="filter-select"
+          value={filterSide}
+          onChange={(e) => setFilterSide(e.target.value)}
+        >
+          <option value="">{t('trade_history.all_sides')}</option>
+          <option value="Buy">{t('trade_history.buy')}</option>
+          <option value="Sell">{t('trade_history.sell')}</option>
+        </select>
+        <select
+          className="filter-select"
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+        >
+          <option value="">{t('trade_history.all_statuses')}</option>
+          <option value="filled">{t('trade_history.filled')}</option>
+          <option value="failed">{t('trade_history.failed')}</option>
+          <option value="cancelled">{t('trade_history.cancelled')}</option>
+          <option value="pending">{t('trade_history.pending')}</option>
+        </select>
+        {hasFilters && (
+          <button
+            className="filter-clear-btn"
+            onClick={() => {
+              setFilterTimeRange('')
+              setFilterMarket('')
+              setFilterSide('')
+              setFilterStatus('')
+            }}
+          >
+            {t('trade_history.clear_filters')}
+          </button>
+        )}
+      </div>
       {trades.length === 0 ? (
-        <div className="empty-state">{t('trade_history.no_trades')}</div>
+        <div className="empty-state">{hasFilters ? t('trade_history.no_matches') : t('trade_history.no_trades')}</div>
       ) : (
         <div className="trades-table-container">
         <table className="trades-table">

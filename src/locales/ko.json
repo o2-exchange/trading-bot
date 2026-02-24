@@ -282,7 +282,21 @@
     "status": "상태",
     "filled": "체결됨",
     "failed": "실패",
-    "unknown": "알 수 없음"
+    "unknown": "알 수 없음",
+    "cancelled": "취소됨",
+    "pending": "대기 중",
+    "buy": "매수",
+    "sell": "매도",
+    "all_time": "전체 기간",
+    "last_1h": "최근 1시간",
+    "last_24h": "최근 24시간",
+    "last_7d": "최근 7일",
+    "last_30d": "최근 30일",
+    "all_markets": "전체 마켓",
+    "all_sides": "전체 방향",
+    "all_statuses": "전체 상태",
+    "clear_filters": "초기화",
+    "no_matches": "선택한 필터에 맞는 거래가 없습니다"
   },
   "terms": {
     "title": "이용약관",

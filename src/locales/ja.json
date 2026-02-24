@@ -282,7 +282,21 @@
     "status": "ステータス",
     "filled": "約定済み",
     "failed": "失敗",
-    "unknown": "不明"
+    "unknown": "不明",
+    "cancelled": "キャンセル",
+    "pending": "保留中",
+    "buy": "買い",
+    "sell": "売り",
+    "all_time": "全期間",
+    "last_1h": "過去1時間",
+    "last_24h": "過去24時間",
+    "last_7d": "過去7日",
+    "last_30d": "過去30日",
+    "all_markets": "全マーケット",
+    "all_sides": "全方向",
+    "all_statuses": "全ステータス",
+    "clear_filters": "クリア",
+    "no_matches": "選択したフィルターに一致する取引がありません"
   },
   "terms": {
     "title": "利用規約",

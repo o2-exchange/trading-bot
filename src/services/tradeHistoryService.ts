@@ -32,6 +32,35 @@ class TradeHistoryService {
       .toArray()
   }
 
+  async getFilteredTrades(filters: {
+    marketId?: string
+    side?: string
+    status?: string
+    startTime?: number
+    endTime?: number
+  }, limit: number = 200): Promise<Trade[]> {
+    let collection = db.trades.orderBy('timestamp').reverse()
+
+    if (filters.startTime || filters.endTime) {
+      const start = filters.startTime || 0
+      const end = filters.endTime || Date.now()
+      collection = db.trades.where('timestamp').between(start, end, true, true).reverse()
+    }
+
+    return await collection
+      .filter(trade => {
+        if (filters.marketId && trade.marketId !== filters.marketId) return false
+        if (filters.side && trade.side !== filters.side) return false
+        if (filters.status) {
+          const tradeStatus = trade.status || (trade.success ? 'filled' : 'failed')
+          if (tradeStatus !== filters.status) return false
+        }
+        return true
+      })
+      .limit(limit)
+      .toArray()
+  }
+
   async getTradeStats(marketId?: string): Promise<{
     totalTrades: number
     successfulTrades: number

@@ -370,7 +370,21 @@
     "status": "Status",
     "filled": "Filled",
     "failed": "Failed",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "cancelled": "Cancelled",
+    "pending": "Pending",
+    "buy": "Buy",
+    "sell": "Sell",
+    "all_time": "All Time",
+    "last_1h": "Last 1h",
+    "last_24h": "Last 24h",
+    "last_7d": "Last 7d",
+    "last_30d": "Last 30d",
+    "all_markets": "All Markets",
+    "all_sides": "All Sides",
+    "all_statuses": "All Statuses",
+    "clear_filters": "Clear",
+    "no_matches": "No trades match the selected filters"
   },
   "terms": {
     "title": "Terms of Use",

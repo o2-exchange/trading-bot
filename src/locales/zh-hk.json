@@ -282,7 +282,21 @@
     "status": "狀態",
     "filled": "已成交",
     "failed": "失敗",
-    "unknown": "未知"
+    "unknown": "未知",
+    "cancelled": "已取消",
+    "pending": "待處理",
+    "buy": "買入",
+    "sell": "賣出",
+    "all_time": "全部時間",
+    "last_1h": "最近1小時",
+    "last_24h": "最近24小時",
+    "last_7d": "最近7天",
+    "last_30d": "最近30天",
+    "all_markets": "全部市場",
+    "all_sides": "全部方向",
+    "all_statuses": "全部狀態",
+    "clear_filters": "清除",
+    "no_matches": "沒有符合所選篩選條件的交易"
   },
   "terms": {
     "title": "使用條款",

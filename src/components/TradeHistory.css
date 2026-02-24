@@ -27,16 +27,19 @@
 
 .filters {
   display: flex;
-  gap: 12px;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .filter-select {
-  padding: 8px 12px;
+  padding: 5px 8px;
   background: var(--background);
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--foreground);
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
   transition: border-color 0.2s;
 }
@@ -44,6 +47,22 @@
 .filter-select:focus {
   outline: none;
   border-color: var(--primary);
+}
+
+.filter-clear-btn {
+  padding: 5px 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-clear-btn:hover {
+  color: var(--foreground);
+  border-color: var(--foreground);
 }
 
 .trades-table-container {
