@@ -34,6 +34,7 @@ export interface Order {
   created_at: number
   updated_at: number
   tx_id?: string
+  _raw_timestamp?: string // Original API timestamp string for pagination cursor precision
 }
 
 export interface CreateOrderParams {

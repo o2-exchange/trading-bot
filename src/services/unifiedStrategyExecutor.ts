@@ -321,6 +321,7 @@ class UnifiedStrategyExecutor {
       orderBook?: any
       balances?: { base: any; quote: any }
       openOrders?: any[] // Prefetched open orders to avoid duplicate API calls
+      sellTimeoutCount?: number // Consecutive sell timeout cancellations for price adjustment
     }
   ): Promise<StrategyExecutionResult> {
     const orders: OrderExecution[] = []
@@ -362,7 +363,7 @@ class UnifiedStrategyExecutor {
       // Check spread if orderbook is available (depth-aware calculation)
       if (orderBook && config.orderConfig.maxSpreadPercent > 0) {
         // Use minOrderSizeUsd as reference for depth-aware spread calculation
-        const referenceOrderSizeUsd = config.positionSizing.minOrderSizeUsd || 10
+        const referenceOrderSizeUsd = config.positionSizing.minOrderSizeUsd || 5
         const spreadResult = this.calculateEffectiveSpread(orderBook, market, referenceOrderSizeUsd)
 
         if (spreadResult && spreadResult.spread > config.orderConfig.maxSpreadPercent) {
@@ -471,7 +472,8 @@ class UnifiedStrategyExecutor {
           balances,
           ticker,
           orderBook,
-          ownerAddress
+          ownerAddress,
+          prefetchedData?.sellTimeoutCount || 0
         )
         if (sellOrder) {
           orders.push(sellOrder)
@@ -851,7 +853,8 @@ class UnifiedStrategyExecutor {
     balances: { base: any; quote: any },
     ticker: any,
     orderBook: any,
-    ownerAddress: string
+    ownerAddress: string,
+    sellTimeoutCount: number = 0
   ): Promise<OrderExecution | null> {
     // Use takeProfitPercent from config, default to 0.02% (round-trip fees: 0.01% buy + 0.01% sell)
     const takeProfitRate = (config.riskManagement?.takeProfitPercent ?? 0.02) / 100
@@ -868,6 +871,28 @@ class UnifiedStrategyExecutor {
       // If current market price is below minimum profitable price, place a LIMIT order at the profitable price
       if (sellPriceHuman.lt(minProfitablePrice)) {
         adjustedSellPrice = minProfitablePrice
+
+        // After consecutive sell timeouts, reduce the floor price slightly to improve fillability
+        // Each timeout reduces the take-profit requirement by 10% of takeProfitRate (capped at 50%)
+        // e.g., with 0.02% take profit: timeout 1 → 0.018%, timeout 2 → 0.016%, ... timeout 5 → 0.01%
+        if (sellTimeoutCount > 0) {
+          const maxReduction = takeProfitRate * 0.5 // Don't reduce more than half the take profit
+          const reductionPerTimeout = takeProfitRate * 0.1 // 10% of take profit per timeout
+          const totalReduction = Math.min(sellTimeoutCount * reductionPerTimeout, maxReduction)
+          const reducedPrice = avgBuyPriceDecimal.mul(1 + takeProfitRate - totalReduction)
+
+          // Only reduce if it still keeps us above break-even
+          if (reducedPrice.gt(avgBuyPriceDecimal)) {
+            adjustedSellPrice = reducedPrice
+            console.log('[UnifiedStrategyExecutor] Sell timeout price adjustment:', {
+              timeoutCount: sellTimeoutCount,
+              originalFloor: minProfitablePrice.toString(),
+              reducedFloor: adjustedSellPrice.toString(),
+              reductionPercent: `${(totalReduction * 100).toFixed(4)}%`,
+            })
+          }
+        }
+
         forceLimitOrder = true // Must use limit order since we're placing above current market price
         console.log('[UnifiedStrategyExecutor] Adjusted sell price for profitability (placing limit order):', {
           originalSellPrice: sellPriceHuman.toString(),

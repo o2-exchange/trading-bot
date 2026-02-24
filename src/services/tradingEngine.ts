@@ -73,6 +73,7 @@ class TradingEngine {
   private marketContexts: Map<string, TradingContext> = new Map()
   private orderCancelListener: ((e: Event) => void) | null = null
   private configVersions: Map<string, number> = new Map() // Track config versions for change detection
+  private sellTimeoutCounts: Map<string, number> = new Map() // Consecutive sell timeout cancellations per market
 
   // Round-robin scheduler: markets take turns in queue order
   private marketQueue: string[] = [] // Queue of market IDs for fair rotation
@@ -199,6 +200,7 @@ class TradingEngine {
 
     this.isRunning = true
     this.sessionTradeCycles = 0
+    this.sellTimeoutCounts.clear()
 
     // Get active strategy configs from database
     console.log('[TradingEngine] Querying active strategy configs...')
@@ -971,7 +973,8 @@ class TradingEngine {
             ticker: prefetchedTicker,
             orderBook: prefetchedOrderBook,
             balances: prefetchedBalances,
-            openOrders: prefetchedOpenOrders
+            openOrders: prefetchedOpenOrders,
+            sellTimeoutCount: this.sellTimeoutCounts.get(marketConfig.market.market_id) || 0
           } : undefined
         )
 
@@ -1001,6 +1004,11 @@ class TradingEngine {
           for (const orderExec of result.orders) {
             if (orderExec.success && orderExec.orderId) {
               console.log(`[TradingEngine] Order placed: ${orderExec.side} ${orderExec.orderId}`)
+
+              // Reset sell timeout counter when a sell order is successfully placed
+              if (orderExec.side === OrderSide.Sell) {
+                this.sellTimeoutCounts.delete(marketConfig.market.market_id)
+              }
               
               // Fetch order once to get status and any immediate fill info
               // No retries/delays needed - trackOrderFills() handles fill detection later
@@ -1510,6 +1518,8 @@ class TradingEngine {
     const timeoutMs = config.riskManagement.orderTimeoutMinutes * 60 * 1000
     const cutoffTime = Date.now() - timeoutMs
 
+    let sellTimeoutCount = 0
+
     try {
       for (const order of openOrders) {
         // Check if order has exceeded timeout
@@ -1518,6 +1528,11 @@ class TradingEngine {
             await orderService.cancelOrder(order.order_id, marketId, ownerAddress)
             cancelledOrderIds.push(order.order_id)
             console.log(`[TradingEngine] Order timeout: Cancelled order ${order.order_id} (age: ${Math.floor((Date.now() - order.created_at) / 60000)} min)`)
+
+            // Track sell timeout cancellations for stale price detection
+            if (order.side === OrderSide.Sell) {
+              sellTimeoutCount++
+            }
 
             // Update trade record to show cancelled status
             await tradeHistoryService.updateTradeByOrderId(order.order_id, {
@@ -1528,6 +1543,13 @@ class TradingEngine {
             console.error(`[TradingEngine] Order timeout: Failed to cancel order ${order.order_id}:`, error)
           }
         }
+      }
+
+      // Track consecutive sell timeouts per market for price adjustment
+      if (sellTimeoutCount > 0) {
+        const current = this.sellTimeoutCounts.get(marketId) || 0
+        this.sellTimeoutCounts.set(marketId, current + sellTimeoutCount)
+        console.log(`[TradingEngine] Sell timeout count for ${marketId}: ${current + sellTimeoutCount}`)
       }
 
       if (cancelledOrderIds.length > 0) {

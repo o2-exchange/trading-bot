@@ -566,6 +566,14 @@
   "release_notes": {
     "title": "Release Notes",
     "auto_update_note": "The app updates automatically when you refresh the page. No action needed to stay up-to-date.",
+    "feb_24": {
+      "order_reliability_title": "Order Reliability & Recovery",
+      "order_reliability_desc": "Orders now automatically recover from nonce/session conflicts with smart retry logic. Full pagination support for accounts with 200+ open orders.",
+      "stale_price_title": "Smart Sell Price Adjustment",
+      "stale_price_desc": "Sell orders that time out are now reposted with gradually reduced take-profit to improve fillability, while always staying above break-even.",
+      "ui_fixes_title": "UI & Config Improvements",
+      "ui_fixes_desc": "Fixed decimal input clearing bug, raised max open orders to 200, and improved position sizing labels with proper translations."
+    },
     "jan_29": {
       "pnl_title": "Improved P&L Tracking",
       "pnl_desc": "Fixed P%L double calculations. P&L now includes both realized and unrealized profits. ",

@@ -30,7 +30,7 @@ class SessionService {
   // Session validation cache to avoid repeated on-chain calls
   // Key: tradingAccountId, Value: { isValid: boolean, timestamp: number }
   private validationCache: Map<string, { isValid: boolean; timestamp: number }> = new Map()
-  private readonly VALIDATION_CACHE_TTL = 30000 // 30 seconds - on-chain validation is slow, cache aggressively
+  private readonly VALIDATION_CACHE_TTL = 10000 // 10 seconds - reduced from 30s for faster session conflict detection
 
   setPassword(password: string) {
     this.password = password

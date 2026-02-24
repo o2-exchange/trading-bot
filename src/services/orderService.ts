@@ -21,9 +21,48 @@ class OrderService {
     quantity: string,
     ownerAddress: string
   ): Promise<Order> {
+    try {
+      return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress)
+    } catch (error: any) {
+      // On 400 error (InvalidSignature / nonce desync / session conflict), retry once with fresh state
+      if (error?.response?.status === 400) {
+        const errorCode = error?.response?.data?.error_code || error?.response?.data?.code
+        console.warn(`[OrderService] 400 error (code: ${errorCode}), attempting recovery and retry...`)
+
+        const normalizedAddress = ownerAddress.toLowerCase()
+
+        // Clear session validation cache so next getActiveSession does a fresh on-chain check
+        sessionService.clearValidationCache()
+
+        // Clear cached manager to force nonce refresh
+        const session = await sessionService.getActiveSession(normalizedAddress, true)
+        if (session) {
+          sessionManagerService.clearManager(normalizedAddress, session.id)
+        }
+
+        // Retry once with fresh state
+        try {
+          return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress)
+        } catch (retryError: any) {
+          console.error('[OrderService] Retry after 400 also failed:', retryError?.message)
+          throw retryError
+        }
+      }
+      throw error
+    }
+  }
+
+  private async _placeOrderInternal(
+    market: Market,
+    side: OrderSide,
+    orderType: OrderType,
+    price: string,
+    quantity: string,
+    ownerAddress: string
+  ): Promise<Order> {
     // Normalize address
     const normalizedAddress = ownerAddress.toLowerCase()
-    
+
     // Get active session
     const session = await sessionService.getActiveSession(normalizedAddress)
     if (!session) {
@@ -150,9 +189,36 @@ class OrderService {
   }
 
   async cancelOrder(orderId: string, marketId: string, ownerAddress: string): Promise<void> {
+    try {
+      return await this._cancelOrderInternal(orderId, marketId, ownerAddress)
+    } catch (error: any) {
+      // On 400 error (nonce desync / session conflict), retry once with fresh state
+      if (error?.response?.status === 400) {
+        const errorCode = error?.response?.data?.error_code || error?.response?.data?.code
+        console.warn(`[OrderService] Cancel 400 error (code: ${errorCode}), attempting recovery and retry...`)
+
+        const normalizedAddress = ownerAddress.toLowerCase()
+        sessionService.clearValidationCache()
+        const session = await sessionService.getActiveSession(normalizedAddress, true)
+        if (session) {
+          sessionManagerService.clearManager(normalizedAddress, session.id)
+        }
+
+        try {
+          return await this._cancelOrderInternal(orderId, marketId, ownerAddress)
+        } catch (retryError: any) {
+          console.error('[OrderService] Cancel retry after 400 also failed:', retryError?.message)
+          throw retryError
+        }
+      }
+      throw error
+    }
+  }
+
+  private async _cancelOrderInternal(orderId: string, marketId: string, ownerAddress: string): Promise<void> {
     // Normalize address
     const normalizedAddress = ownerAddress.toLowerCase()
-    
+
     const session = await sessionService.getActiveSession(normalizedAddress)
     if (!session) {
       throw new Error('No active session found')
@@ -262,24 +328,52 @@ class OrderService {
       return []
     }
 
-    // Use market_id with required contract, direction and count parameters
-    const orders = await o2ApiService.getOrders(
-      {
-        market_id: marketId,
-        contract: session.tradeAccountId,  // Required by API (trading account ID)
-        is_open: true,
-        direction: 'desc',  // Required by API
-        count: 200,         // Required by API (reasonable default)
-      },
-      normalizedAddress
-    )
+    // Paginate through all open orders (API returns max 200 per request)
+    const allOrders: Order[] = []
+    let startTimestamp: string | undefined
+    let startOrderId: string | undefined
+    const PAGE_SIZE = 200
+    const MAX_PAGES = 20 // Safety: prevent infinite loops (20 * 200 = 4000 orders max)
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const orders = await o2ApiService.getOrders(
+        {
+          market_id: marketId,
+          contract: session.tradeAccountId,
+          is_open: true,
+          direction: 'desc',
+          count: PAGE_SIZE,
+          start_timestamp: startTimestamp,
+          start_order_id: startOrderId,
+        },
+        normalizedAddress
+      )
+
+      allOrders.push(...orders)
+
+      // If we got fewer than PAGE_SIZE, we've reached the end
+      if (orders.length < PAGE_SIZE) break
+
+      // Set cursor for next page using raw API timestamp to preserve precision
+      const lastOrder = orders[orders.length - 1]
+      const newCursorId = lastOrder.order_id
+
+      // Guard against stuck cursor (same order_id means API returned same page)
+      if (newCursorId === startOrderId) {
+        console.warn('[OrderService] Pagination cursor not advancing, breaking to prevent infinite loop')
+        break
+      }
+
+      startTimestamp = lastOrder._raw_timestamp || String(lastOrder.created_at)
+      startOrderId = newCursorId
+    }
 
     // Update database
-    for (const order of orders) {
+    for (const order of allOrders) {
       await db.orders.put(order)
     }
 
-    return orders
+    return allOrders
   }
 
   async getAllOpenOrders(ownerAddress: string): Promise<Order[]> {
@@ -291,30 +385,16 @@ class OrderService {
 
     // Get all markets
     const markets = await marketService.fetchMarkets()
-    
-    // Fetch orders for each market separately (API requires market_id when is_open=true)
+
+    // Fetch orders for each market using the paginated getOpenOrders method
     const allOrders: Order[] = []
     for (const market of markets) {
       try {
-        const orders = await o2ApiService.getOrders(
-          {
-            market_id: market.market_id,
-            contract: session.tradeAccountId,  // Required by API (trading account ID)
-            is_open: true,
-            direction: 'desc',  // Required by API
-            count: 200,         // Required by API
-          },
-          normalizedAddress
-        )
+        const orders = await this.getOpenOrders(market.market_id, normalizedAddress)
         allOrders.push(...orders)
       } catch (error) {
         console.error(`Failed to fetch orders for market ${market.market_id}:`, error)
       }
-    }
-
-    // Update database
-    for (const order of allOrders) {
-      await db.orders.put(order)
     }
 
     return allOrders

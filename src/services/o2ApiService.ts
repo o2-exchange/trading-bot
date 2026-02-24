@@ -148,6 +148,7 @@ function mapApiOrderToOrder(apiOrder: ApiOrder): Order {
     created_at: createdAt,
     updated_at: updatedAt,
     tx_id: txId,
+    _raw_timestamp: apiOrder.timestamp, // Preserve original string for pagination cursor
   }
 }
 
@@ -365,6 +366,8 @@ class O2ApiService {
     is_open?: boolean
     direction?: 'asc' | 'desc'
     count?: number
+    start_timestamp?: string
+    start_order_id?: string
   }, ownerId: string): Promise<Order[]> {
     // Convert ownerId to B256 format for header (same as session creation)
     const wallet = walletService.getConnectedWallet()
@@ -387,6 +390,8 @@ class O2ApiService {
     if (params.is_open !== undefined) queryParams.append('is_open', String(params.is_open))
     if (params.direction) queryParams.append('direction', params.direction)
     if (params.count) queryParams.append('count', String(params.count))
+    if (params.start_timestamp) queryParams.append('start_timestamp', params.start_timestamp)
+    if (params.start_order_id) queryParams.append('start_order_id', params.start_order_id)
 
     const response = await this.client.get<{ orders: ApiOrder[] }>(`/orders?${queryParams.toString()}`, {
       headers: {

@@ -54,39 +54,38 @@ interface NumberInputProps {
 
 function NumberInput({ value, onChange, min, max, step = 'any', disabled, placeholder, isInteger }: NumberInputProps) {
   const [localValue, setLocalValue] = useState<string>(String(value))
+  const isFocusedRef = useRef(false)
 
   // Sync local value when external value changes (e.g., preset change)
+  // but NOT while the user is actively typing (prevents clearing "0." → "0")
   useEffect(() => {
-    setLocalValue(String(value))
+    if (!isFocusedRef.current) {
+      setLocalValue(String(value))
+    }
   }, [value])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value
-    setLocalValue(rawValue) // Allow any input including empty
+    setLocalValue(rawValue) // Allow any input including empty, trailing decimals, etc.
+  }
 
-    // Parse and update parent if valid
-    if (rawValue !== '' && rawValue !== '-') {
-      const parsed = isInteger ? parseInt(rawValue, 10) : parseFloat(rawValue)
-      if (!isNaN(parsed)) {
-        let clamped = parsed
-        if (min !== undefined) clamped = Math.max(min, clamped)
-        if (max !== undefined) clamped = Math.min(max, clamped)
-        onChange(clamped)
-      }
-    }
+  const handleFocus = () => {
+    isFocusedRef.current = true
   }
 
   const handleBlur = () => {
-    // On blur, if empty or invalid, reset to current value
+    isFocusedRef.current = false
+    // On blur, parse, clamp, and commit to parent
     const parsed = isInteger ? parseInt(localValue, 10) : parseFloat(localValue)
     if (isNaN(parsed) || localValue === '') {
+      // Invalid or empty — reset display to current parent value
       setLocalValue(String(value))
     } else {
-      // Ensure displayed value matches clamped value
       let clamped = parsed
       if (min !== undefined) clamped = Math.max(min, clamped)
       if (max !== undefined) clamped = Math.min(max, clamped)
       setLocalValue(String(clamped))
+      onChange(clamped)
     }
   }
 
@@ -95,6 +94,7 @@ function NumberInput({ value, onChange, min, max, step = 'any', disabled, placeh
       type="number"
       value={localValue}
       onChange={handleChange}
+      onFocus={handleFocus}
       onBlur={handleBlur}
       min={min}
       max={max}
@@ -117,8 +117,8 @@ const TOOLTIPS = {
 
   // Position Sizing
   sizeMode: "% Balance: Use percentage of available balance. Fixed USD: Use fixed dollar amount per order.",
-  baseBalancePercent: "Percentage of base asset balance to use for sell orders. 100% = use entire available balance.",
-  quoteBalancePercent: "Percentage of quote asset balance to use for buy orders. 100% = use entire available balance.",
+  baseBalancePercent: "Max % of your base asset (e.g. ETH) balance to allocate for SELL orders. 100% = use entire available balance per cycle.",
+  quoteBalancePercent: "Max % of your quote asset (e.g. USDC) balance to allocate for BUY orders. 100% = use entire available balance per cycle.",
   fixedUsdAmount: "Fixed USD value for each order. Applied to both buy and sell orders.",
   minOrderSizeUsd: "Minimum order value in USD. Orders below this are skipped. Prevents dust orders.",
   maxOrderSizeUsd: "Maximum order value in USD. Caps order size even if balance allows more. Leave empty for no limit.",
@@ -1261,7 +1261,7 @@ function StrategyConfigForm({
             value={config.orderManagement.maxOpenOrders}
             onChange={(value) => updateOrderManagement({ maxOpenOrders: value })}
             min={1}
-            max={50}
+            max={200}
             isInteger
           />
         </div>
@@ -1282,7 +1282,7 @@ function StrategyConfigForm({
         {config.positionSizing.sizeMode === 'percentageOfBalance' ? (
           <>
             <div className="form-field">
-              <label className="label-with-tooltip">{markets.find(m => m.market_id === selectedMarket)?.base.symbol || t('strategy.base')} {t('strategy.balance_percent')} <Tooltip text={TOOLTIPS.baseBalancePercent} /></label>
+              <label className="label-with-tooltip">{t('strategy.position_sizing.base_balance_percent', { symbol: markets.find(m => m.market_id === selectedMarket)?.base.symbol || t('strategy.base') })} <Tooltip text={TOOLTIPS.baseBalancePercent} /></label>
               <NumberInput
                 value={config.positionSizing.baseBalancePercentage ?? config.positionSizing.balancePercentage}
                 onChange={(value) => updatePositionSizing({ baseBalancePercentage: value })}
@@ -1292,7 +1292,7 @@ function StrategyConfigForm({
               />
             </div>
             <div className="form-field">
-              <label className="label-with-tooltip">{markets.find(m => m.market_id === selectedMarket)?.quote.symbol || t('strategy.quote')} {t('strategy.balance_percent')} <Tooltip text={TOOLTIPS.quoteBalancePercent} position="right" /></label>
+              <label className="label-with-tooltip">{t('strategy.position_sizing.quote_balance_percent', { symbol: markets.find(m => m.market_id === selectedMarket)?.quote.symbol || t('strategy.quote') })} <Tooltip text={TOOLTIPS.quoteBalancePercent} position="right" /></label>
               <NumberInput
                 value={config.positionSizing.quoteBalancePercentage ?? config.positionSizing.balancePercentage}
                 onChange={(value) => updatePositionSizing({ quoteBalancePercentage: value })}

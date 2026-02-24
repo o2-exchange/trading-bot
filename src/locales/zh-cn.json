@@ -469,6 +469,14 @@
   "release_notes": {
     "title": "更新日志",
     "auto_update_note": "刷新页面时应用会自动更新。无需任何操作即可保持最新版本。",
+    "feb_24": {
+      "order_reliability_title": "订单可靠性与恢复",
+      "order_reliability_desc": "通过智能重试逻辑自动从随机数/会话冲突中恢复。支持200+未完成订单的完整分页。",
+      "stale_price_title": "智能卖价调整",
+      "stale_price_desc": "超时的卖单会以逐渐降低的止盈幅度重新挂单以提高成交率，同时始终保持在盈亏平衡点以上。",
+      "ui_fixes_title": "UI和配置改进",
+      "ui_fixes_desc": "修复小数输入清除错误，最大挂单数提高至200，改进仓位大小标签翻译。"
+    },
     "jan_29": {
       "pnl_title": "损益追踪改进",
       "pnl_desc": "损益现在包括已实现和未实现的利润。根据当前市场价格查看您持仓的真实价值，采用高精度计算。",
