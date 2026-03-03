@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { authFlowService } from '../services/authFlowService'
 import { walletService } from '../services/walletService'
+import { useWalletStore } from '../stores/useWalletStore'
 import TermsOfUseDialog from './TermsOfUseDialog'
 import SignMessageDialog from './SignMessageDialog'
 import WelcomeModal from './WelcomeModal'
@@ -16,12 +17,14 @@ export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: Auth
   const { t } = useTranslation()
   const [authState, setAuthState] = useState(authFlowService.getState())
   const { addToast } = useToast()
+  const connectedWallet = useWalletStore((state) => state.connectedWallet)
+  const isWalletConnected = !!connectedWallet
+  const hasStartedRef = useRef(false)
 
+  // Subscribe to auth flow state changes (stable — does not depend on wallet state)
   useEffect(() => {
     let mounted = true
-    let hasStarted = false
 
-    // Subscribe to auth flow state changes
     const unsubscribe = authFlowService.subscribe((context) => {
       if (mounted) {
         console.log('Auth flow state changed:', context.state, context.error)
@@ -43,49 +46,44 @@ export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: Auth
       }
     })
 
-    // Start auth flow if wallet is connected and state is idle
-    const currentState = authFlowService.getState()
-    console.log('AuthFlowOverlay mounted, current state:', currentState.state)
+    return () => {
+      mounted = false
+      unsubscribe()
+    }
+  }, [onAuthReady, onAuthStateChange])
 
-    // If already ready, notify parent
-    if (currentState.state === 'ready') {
-      console.log('Auth flow already ready')
-      setAuthState(currentState)
-      onAuthReady?.()
-      onAuthStateChange?.(currentState.state, currentState.isWhitelisted)
-      return unsubscribe
+  // Start auth flow when wallet connects (reactive to wallet state changes)
+  // This replaces the old mount-based approach that was fragile to unmount/remount cycles
+  useEffect(() => {
+    if (!isWalletConnected) {
+      // Wallet disconnected — reset the started flag so flow runs on next connect
+      hasStartedRef.current = false
+      return
     }
 
-    // Only start flow once
-    if (currentState.state === 'idle' && !hasStarted) {
-      hasStarted = true
+    // Wallet is connected — check if we need to start the flow
+    const currentState = authFlowService.getState()
+
+    // If already ready, just notify parent
+    if (currentState.state === 'ready') {
+      onAuthReady?.()
+      onAuthStateChange?.(currentState.state, currentState.isWhitelisted)
+      return
+    }
+
+    // Only start flow once per connection
+    if (currentState.state === 'idle' && !hasStartedRef.current) {
+      hasStartedRef.current = true
       const wallet = walletService.getConnectedWallet()
       if (wallet) {
         console.log('Starting auth flow for wallet:', wallet.address)
         authFlowService.startFlow().catch((error) => {
-          if (mounted) {
-            console.error('Failed to start auth flow', error)
-            addToast(t('auth.flow_error', { message: error.message }), 'error')
-          }
+          console.error('Failed to start auth flow', error)
+          addToast(t('auth.flow_error', { message: error.message }), 'error')
         })
-      } else {
-        console.warn('No wallet connected when trying to start auth flow')
       }
     }
-
-    return () => {
-      mounted = false
-      unsubscribe()
-      // Only abort if the flow is in a "working" state (checking, creating, whitelisting)
-      // Don't abort if flow is in a "display" state (awaiting user action) or already ready
-      // This prevents React Strict Mode double-mounting from killing active flows
-      const state = authFlowService.getState().state
-      const interruptibleStates = ['checkingSituation', 'checkingTerms', 'whitelisting', 'creatingSession']
-      if (interruptibleStates.includes(state)) {
-        authFlowService.abort()
-      }
-    }
-  }, [onAuthReady, onAuthStateChange])
+  }, [isWalletConnected, onAuthReady, onAuthStateChange])
 
   const handleTermsClose = () => {
     // Only reset if terms were actually declined

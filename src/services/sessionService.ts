@@ -30,7 +30,7 @@ class SessionService {
   // Session validation cache to avoid repeated on-chain calls
   // Key: tradingAccountId, Value: { isValid: boolean, timestamp: number }
   private validationCache: Map<string, { isValid: boolean; timestamp: number }> = new Map()
-  private readonly VALIDATION_CACHE_TTL = 10000 // 10 seconds - reduced from 30s for faster session conflict detection
+  private readonly VALIDATION_CACHE_TTL = 120000 // 120 seconds - long enough to avoid excessive RPC calls that can kill sessions on transient failures
 
   setPassword(password: string) {
     this.password = password
@@ -410,13 +410,16 @@ class SessionService {
             }
           }
 
-          // If all retries failed, treat as invalid for safety
+          // If all retries failed due to network/RPC errors, be OPTIMISTIC
+          // The session may still be valid — we just can't reach the chain to verify.
+          // Returning false here would permanently kill the session (one-way door).
+          // Let trading continue and fail naturally if the session is truly revoked.
           if (isValidOnChain === null) {
-            console.error(`[SessionService] On-chain validation failed after ${maxRetries} attempts: ${lastError?.message}. ` +
-              `Treating as invalid for safety.`)
-            // Cache as invalid to prevent repeated failed validations
-            this.validationCache.set(normalizedAccountId, { isValid: false, timestamp: Date.now() })
-            return false
+            console.warn(`[SessionService] On-chain validation failed after ${maxRetries} attempts: ${lastError?.message}. ` +
+              `Treating as VALID (optimistic) — network errors should not kill sessions.`)
+            // Cache as valid so we don't hammer the RPC with repeated failing calls
+            this.validationCache.set(normalizedAccountId, { isValid: true, timestamp: Date.now() })
+            return true
           }
 
           if (!isValidOnChain) {
@@ -435,19 +438,19 @@ class SessionService {
           // Cache valid result
           this.validationCache.set(normalizedAccountId, { isValid: true, timestamp: Date.now() })
         } catch (error) {
-          // Unexpected error (not from validation API)
-          console.error('[SessionService] Unexpected validation error (treating as invalid):', error)
-          // Cache as invalid for safety
-          this.validationCache.set(normalizedAccountId, { isValid: false, timestamp: Date.now() })
-          return false
+          // Unexpected error (not from validation API) — likely network/infrastructure issue
+          // Be optimistic: don't kill the session over infrastructure errors
+          console.warn('[SessionService] Unexpected validation error (treating as VALID — optimistic):', error)
+          this.validationCache.set(normalizedAccountId, { isValid: true, timestamp: Date.now() })
+          return true
         }
       }
 
       return true
     } catch (error) {
-      console.error('[SessionService] Error validating session:', error)
-      // On general errors, return false but don't clear session
-      return false
+      console.warn('[SessionService] Error validating session (treating as valid — optimistic):', error)
+      // On general errors, be optimistic — don't kill sessions over transient issues
+      return true
     }
   }
 
@@ -483,9 +486,58 @@ class SessionService {
           }
         }
       }
+
+      // FIX: Zustand store is empty but IndexedDB may still have a valid session.
+      // This closes the "one-way door" — once a session was cleared from Zustand
+      // (e.g., due to a transient validation failure), it could never be recovered.
+      // Now we check IndexedDB and repopulate the Zustand cache if found.
+      try {
+        const allSessions = await db.sessions
+          .where('ownerAddress')
+          .equals(normalizedAddress)
+          .toArray()
+
+        const activeSessions = allSessions
+          .filter((s) => s.isActive && s.expiry > Date.now())
+          .sort((a, b) => b.createdAt - a.createdAt)
+
+        if (activeSessions.length > 0) {
+          const dbSession = activeSessions[0]
+          console.log('[SessionService] Recovered session from IndexedDB that was missing from Zustand cache:', dbSession.id)
+
+          // Reconstruct SessionInput and repopulate Zustand store
+          const expiryInSeconds = Math.floor(dbSession.expiry / 1000)
+          const sessionInput: SessionInput = {
+            session_id: {
+              Address: { bits: dbSession.id },
+            },
+            expiry: {
+              unix: bn(expiryInSeconds.toString()),
+            },
+            contract_ids: dbSession.contractIds.map((id) => ({ bits: id })),
+          }
+          useSessionStore.getState().setSession(tradingAccount.id as `0x${string}`, sessionInput)
+
+          // Validate if not skipping
+          if (!skipValidation) {
+            const isValid = await this.validateSession(
+              tradingAccount.id,
+              normalizedAddress,
+              false
+            )
+            if (!isValid) {
+              useSessionStore.getState().clearSessionForAccount(tradingAccount.id as `0x${string}`)
+              return null
+            }
+          }
+          return dbSession
+        }
+      } catch (error) {
+        console.warn('[SessionService] Error recovering session from IndexedDB:', error)
+      }
     }
 
-    // Fallback to database query
+    // Fallback to database query (no trading account found)
     const allSessions = await db.sessions
       .where('ownerAddress')
       .equals(normalizedAddress)

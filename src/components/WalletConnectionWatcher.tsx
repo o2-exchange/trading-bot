@@ -20,6 +20,7 @@ export function WalletConnectionWatcher() {
   const clearWallet = useWalletStore((state) => state.clearWallet)
   const previousAddressRef = useRef<string | null>(null)
   const initialCheckDoneRef = useRef(false)
+  const disconnectResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Handle wallet disconnect
   const handleDisconnect = useCallback((source?: string) => {
@@ -34,10 +35,18 @@ export function WalletConnectionWatcher() {
     // 2. User explicitly uses "Clear & Retry" button
     // This matches O2's behavior and prevents intermittent connection issues on refresh
 
-    // DON'T reset auth flow here either - it causes issues when wagmi briefly
-    // reports disconnected during signing or page load. The auth flow will
-    // naturally restart when user reconnects (startFlow checks for wallet).
-    // If user was viewing welcome modal, they can dismiss it and proceed.
+    // Reset auth flow with a delay to handle wagmi transient disconnects.
+    // If the wallet reconnects within 2 seconds (wagmi briefly reports disconnected
+    // during signing or page load), the timer is cancelled in handleConnect.
+    // If it's a genuine disconnect, the reset fires after 2s so reconnect works.
+    if (disconnectResetTimerRef.current) {
+      clearTimeout(disconnectResetTimerRef.current)
+    }
+    disconnectResetTimerRef.current = setTimeout(() => {
+      console.log('[WalletWatcher] Genuine disconnect detected — resetting auth flow')
+      authFlowService.reset()
+      disconnectResetTimerRef.current = null
+    }, 2000)
 
     previousAddressRef.current = null
   }, [clearWallet])
@@ -45,6 +54,13 @@ export function WalletConnectionWatcher() {
   // Handle wallet connection/account change
   const handleConnect = useCallback((address: string, isFuel: boolean, connector: any, type: string) => {
     const normalizedAddress = address.toLowerCase()
+
+    // Cancel any pending disconnect reset — this was a transient disconnect (wagmi flicker)
+    if (disconnectResetTimerRef.current) {
+      console.log('[WalletWatcher] Reconnected quickly — cancelling auth flow reset (transient disconnect)')
+      clearTimeout(disconnectResetTimerRef.current)
+      disconnectResetTimerRef.current = null
+    }
 
     // Check if this is an account change (not initial connect)
     if (previousAddressRef.current && previousAddressRef.current !== normalizedAddress) {

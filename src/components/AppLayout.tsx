@@ -86,13 +86,13 @@ export default function AppLayout() {
 
   return (
     <div className="dashboard">
-      {/* Non-blocking auth flow overlay - only render when wallet is connected */}
-      {isWalletConnected && (
-        <AuthFlowOverlay
-          onAuthReady={handleAuthReady}
-          onAuthStateChange={handleAuthStateChange}
-        />
-      )}
+      {/* Non-blocking auth flow overlay - always mounted to prevent unmount/remount
+          from aborting in-progress session creation during wagmi transient disconnects.
+          The overlay handles wallet state internally and renders nothing when no wallet is connected. */}
+      <AuthFlowOverlay
+        onAuthReady={handleAuthReady}
+        onAuthStateChange={handleAuthStateChange}
+      />
 
       {/* Connect Wallet Dialog */}
       {showConnectWalletDialog && (

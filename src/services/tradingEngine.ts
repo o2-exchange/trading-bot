@@ -74,6 +74,9 @@ class TradingEngine {
   private orderCancelListener: ((e: Event) => void) | null = null
   private configVersions: Map<string, number> = new Map() // Track config versions for change detection
   private sellTimeoutCounts: Map<string, number> = new Map() // Consecutive sell timeout cancellations per market
+  private consecutiveSessionErrors: number = 0 // Track consecutive "no active session" errors
+  private static readonly MAX_SESSION_ERRORS = 5 // Auto-stop after this many consecutive session failures
+  private consecutiveErrors: number = 0 // Track ALL consecutive errors for exponential backoff
 
   // Round-robin scheduler: markets take turns in queue order
   private marketQueue: string[] = [] // Queue of market IDs for fair rotation
@@ -201,6 +204,8 @@ class TradingEngine {
     this.isRunning = true
     this.sessionTradeCycles = 0
     this.sellTimeoutCounts.clear()
+    this.consecutiveSessionErrors = 0
+    this.consecutiveErrors = 0
 
     // Get active strategy configs from database
     console.log('[TradingEngine] Querying active strategy configs...')
@@ -1323,6 +1328,10 @@ class TradingEngine {
         // Pass the correct sessionId for this market to ensure P&L is recorded to the right session
         await this.syncPendingTradeStatuses(marketConfig.market.market_id, this.ownerAddress!, marketConfig.sessionId)
 
+        // Successful cycle — reset error counters
+        this.consecutiveSessionErrors = 0
+        this.consecutiveErrors = 0
+
         // Set next execution time for this market
         const nextRunAt = result.nextRunAt || Date.now() + this.getJitteredDelay(marketConfig.config)
         marketConfig.nextRunAt = nextRunAt
@@ -1332,8 +1341,37 @@ class TradingEngine {
         const errorPair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
         this.emitStatus(i18next.t('trading_console.error_in_strategy', { pair: errorPair, error: error.message }), 'error')
 
-        // Set next run time with delay on error
-        marketConfig.nextRunAt = Date.now() + 10000
+        // Detect session loss: if we keep getting "No active session" errors, stop gracefully
+        // instead of looping forever in a useless retry cycle
+        const isSessionError = error.message?.includes('No active session') ||
+          error.message?.includes('Session key not found') ||
+          error.message?.includes('Password not set for session')
+
+        if (isSessionError) {
+          this.consecutiveSessionErrors++
+          console.warn(`[TradingEngine] Session error #${this.consecutiveSessionErrors}/${TradingEngine.MAX_SESSION_ERRORS}`)
+
+          if (this.consecutiveSessionErrors >= TradingEngine.MAX_SESSION_ERRORS) {
+            console.error(`[TradingEngine] Session lost after ${this.consecutiveSessionErrors} consecutive errors. Auto-stopping to prevent infinite retry loop.`)
+            this.emitStatus(
+              'Trading stopped: session expired or was revoked. Please reconnect your wallet and create a new session.',
+              'error'
+            )
+            this.stop()
+            return // Exit early — don't schedule next market
+          }
+        } else {
+          // Reset counter on non-session errors (transient issues like network blips)
+          this.consecutiveSessionErrors = 0
+        }
+
+        // Exponential backoff: 10s → 20s → 40s → 80s → 160s → 300s (cap at 5 min)
+        // Prevents hammering failing endpoints during outages, which can cause
+        // rate-limiting cascades that indirectly affect session validation
+        this.consecutiveErrors++
+        const backoffDelay = Math.min(10000 * Math.pow(2, this.consecutiveErrors - 1), 300000)
+        console.warn(`[TradingEngine] Consecutive error #${this.consecutiveErrors}, backing off ${Math.round(backoffDelay / 1000)}s`)
+        marketConfig.nextRunAt = Date.now() + backoffDelay
     } finally {
       this.isProcessingMarket = false
 

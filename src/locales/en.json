@@ -566,6 +566,10 @@
   "release_notes": {
     "title": "Release Notes",
     "auto_update_note": "The app updates automatically when you refresh the page. No action needed to stay up-to-date.",
+    "mar_03": {
+      "session_fix_title": "Session Stability Fix",
+      "session_fix_desc": "Resolved sessions expiring unexpectedly and bots getting stuck. Sessions now persist reliably through temporary interruptions, and the trading engine recovers gracefully instead of retrying indefinitely."
+    },
     "feb_24": {
       "order_reliability_title": "Order Reliability & Recovery",
       "order_reliability_desc": "Orders now automatically recover from nonce/session conflicts with smart retry logic. Full pagination support for accounts with 200+ open orders.",

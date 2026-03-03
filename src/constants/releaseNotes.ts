@@ -12,6 +12,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.5.1',
+    date: '2026-03-03',
+    features: [
+      {
+        title: 'release_notes.mar_03.session_fix_title',
+        description: 'release_notes.mar_03.session_fix_desc',
+      },
+    ],
+  },
+  {
     version: '1.5.0',
     date: '2026-02-24',
     features: [

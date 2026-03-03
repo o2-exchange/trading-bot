@@ -469,6 +469,10 @@
   "release_notes": {
     "title": "更新日志",
     "auto_update_note": "刷新页面时应用会自动更新。无需任何操作即可保持最新版本。",
+    "mar_03": {
+      "session_fix_title": "会话稳定性修复",
+      "session_fix_desc": "解决了会话意外过期和机器人卡住的问题。会话现在可以在临时中断期间可靠地保持，交易引擎会正常恢复而不是无限重试。"
+    },
     "feb_24": {
       "order_reliability_title": "订单可靠性与恢复",
       "order_reliability_desc": "通过智能重试逻辑自动从随机数/会话冲突中恢复。支持200+未完成订单的完整分页。",

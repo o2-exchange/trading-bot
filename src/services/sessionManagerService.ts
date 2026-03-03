@@ -120,12 +120,15 @@ class SessionManagerService {
       } else {
         // If store doesn't have it, construct from database session
         console.log('[SessionManagerService] No session in store, constructing from database...')
+        // CRITICAL: session.expiry is stored in MILLISECONDS in the DB (see sessionService.ts line 270)
+        // but SessionInput.expiry.unix expects SECONDS (Unix timestamp)
+        const expiryInSeconds = Math.floor(session.expiry / 1000)
         const sessionInput: SessionInput = {
           session_id: {
             Address: { bits: session.id },
           },
           expiry: {
-            unix: bn(session.expiry.toString()),
+            unix: bn(expiryInSeconds.toString()),
           },
           contract_ids: session.contractIds.map((id) => ({ bits: id })),
         }

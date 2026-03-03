@@ -469,6 +469,10 @@
   "release_notes": {
     "title": "更新日誌",
     "auto_update_note": "重新整理頁面時應用程式會自動更新。無需任何操作即可保持最新版本。",
+    "mar_03": {
+      "session_fix_title": "會話穩定性修復",
+      "session_fix_desc": "解決了會話意外過期和機器人卡住的問題。會話現在可以在臨時中斷期間可靠地保持，交易引擎會正常恢復而不是無限重試。"
+    },
     "feb_24": {
       "order_reliability_title": "訂單可靠性與恢復",
       "order_reliability_desc": "透過智能重試邏輯自動從隨機數/會話衝突中恢復。支援200+未完成訂單的完整分頁。",
