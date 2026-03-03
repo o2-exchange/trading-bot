@@ -1,8 +1,93 @@
+// --- Competition Layout Types ---
+
+export type CompetitionLayout = 'standard' | 'lottery' | 'dailystreak' | 'dailystreak_v2' | 'dailystreak_v3' | 'halloffame'
+
+export interface DailyStreakPeriod {
+  name?: string
+  boostBp: number
+  superBoostBp?: number
+  superBoostStreakNeeded?: number
+  thresholdPercent?: number
+  startTime: string
+  endTime: string
+}
+
+export interface StreakConfig {
+  enabled: boolean
+  currentPeriodIndex: number
+  periods: DailyStreakPeriod[]
+}
+
+export interface UserStreakPeriod {
+  periodIndex: number
+  targetMet: boolean
+  targetVolume: string
+  volume: string
+  isComplete: boolean
+}
+
+export interface UserStreak {
+  currentPeriodIndex: number
+  superBoostEligible: boolean
+  streakCount: number
+  periods: UserStreakPeriod[]
+  superBoostStatus?: 'active' | 'lost' | 'eligible'
+  superBoostStreakBrokenDay?: number
+}
+
+export interface UserLotteryStatus {
+  ticketsThisPeriod: number
+  ticketsTotal: number
+  winsCount: number
+}
+
+export interface SubRankingEntry {
+  traderId: string
+  tradingAccount: string
+  rank: number
+  score: number
+  volume: string
+  takerVolume?: string
+  makerVolume?: string
+  makerShare?: number
+  realizedPnl?: string
+  superBoostStatus?: string
+}
+
+export interface DailyRaceItem {
+  rank: string
+  traderId: string
+  tradingAccount: string
+  dailyTicketsEarned: number
+  dailyVolume: string
+  nextTicketAt?: string
+}
+
+export interface DisqualifiedTraderEntry {
+  traderId: string
+  tradingAccount: string
+  pnl: string
+  volume: string
+  score: string
+  rank: string
+  adjustmentReason: string
+  adjustmentType: string
+}
+
+export interface ActiveMilestone {
+  targetVolume: string
+  rewardPool: string
+}
+
+// --- Core Competition Types ---
+
 export interface Competition {
   competitionId: string
   title: string
   subtitle: string
   symbols: string[]
+  slug?: string
+  layout: CompetitionLayout
   assets: {
     light: {
       backgroundImage: string
@@ -12,6 +97,8 @@ export interface Competition {
       backgroundImage: string
       color: string
     }
+    tabs?: string[]
+    layout?: CompetitionLayout
   }
   totalTraders: number
   totalVolume: string
@@ -19,6 +106,13 @@ export interface Competition {
   rewardPool?: string
   startDate: string
   endDate: string | null
+  marketBoosts?: Record<string, number>
+  streakConfig?: StreakConfig
+  placeholderVolumeTarget?: string
+  prizePool?: {
+    milestones: Milestone[]
+    activeMilestone?: ActiveMilestone
+  }
 }
 
 export interface Milestone {
@@ -40,12 +134,15 @@ export interface PrizePoolSchema {
 export interface FormattedPrizePool extends PrizePoolSchema {
   /** Index of the currently active milestone based on total volume */
   milestoneIndex: number
+  /** Currently active milestone details */
+  activeMilestone?: ActiveMilestone
 }
 
 export interface CompetitionListResponse {
   competitions: Competition[]
 }
 
+/** @deprecated Use UserStreak instead */
 export interface StreakInfo {
   current: number
   longest: number
@@ -65,7 +162,18 @@ export interface LeaderboardItem {
   rank: string
   score: string
   referralVolume: string
-  streak?: StreakInfo
+  /** @deprecated Use streak (UserStreak) for detailed streak data */
+  streak?: StreakInfo | UserStreak
+  takerVolume?: string
+  makerVolume?: string
+  takerScore?: string
+  makerScore?: string
+  takerRank?: string
+  makerRank?: string
+  pnlRank?: string
+  superBoostStatus?: string
+  superBoostStreakBrokenDay?: number
+  lottery?: UserLotteryStatus
 }
 
 export interface LotteryInfo {
@@ -90,6 +198,7 @@ export interface LeaderboardResponse {
   rewardPool?: string
   currentUser: LeaderboardItem | null
   competitionId: string
+  slug?: string
   title: string
   subtitle: string
   symbols: string[]
@@ -102,13 +211,28 @@ export interface LeaderboardResponse {
       backgroundImage: string
       color: string
     }
+    tabs?: string[]
   }
   ruleType: number
+  rules?: string
   markets: string[]
   startDate: string
   endDate: string | null
   lottery?: LotteryInfo
   specialPositions?: Record<string, SpecialPosition>
   marketBoosts?: Record<string, number>
+  streakConfig?: StreakConfig
+  // Sub-rankings
+  subRankingsTaker?: SubRankingEntry[]
+  subRankingsMaker?: SubRankingEntry[]
+  subRankingsPnl?: SubRankingEntry[]
+  dailyRaceItems?: DailyRaceItem[]
+  currentUserSubRankingTaker?: SubRankingEntry
+  currentUserSubRankingMaker?: SubRankingEntry
+  currentUserSubRankingPnl?: SubRankingEntry
+  currentUserDailyRace?: DailyRaceItem
+  disqualifiedTraders?: DisqualifiedTraderEntry[]
+  pnlWeights?: Record<string, number>
+  totalRewards?: string
+  isComplete?: boolean
 }
-

@@ -1,80 +1,70 @@
-.competition-panel {
+/* ============================================
+   Competition Panel — O2 theme integration
+   Uses existing OKLCH theme vars from o2-theme.css
+   ============================================ */
+
+/* Panel: matches O2 card */
+.cp-panel {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 8px 12px;
+  border-radius: var(--radius);
   margin-bottom: 4px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--foreground);
+  overflow: hidden;
 }
 
-.competition-loading,
-.competition-error,
-.competition-no-active {
+/* Status screens */
+.cp-status {
   text-align: center;
-  padding: 8px;
+  padding: 12px;
   color: var(--muted-foreground);
   font-size: 12px;
 }
+.cp-error { color: var(--destructive); }
 
-.competition-error {
-  color: var(--destructive);
-}
-
-/* Single row layout */
-.competition-row {
+/* ========== HEADER: single row with 3 sections ========== */
+.cp-header {
   display: flex;
   align-items: center;
+  padding: 10px 14px;
   gap: 16px;
   flex-wrap: wrap;
 }
 
-/* Competition info section */
-.competition-info {
+/* Left: title + active badge + leaderboard link */
+.cp-header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.competition-title-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.competition-title {
+.cp-title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--foreground);
   white-space: nowrap;
 }
 
-.highlight-text {
-  color: var(--primary);
-}
+.cp-highlight { color: var(--primary); }
 
-.active-badge {
+.cp-active-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
-  background: var(--success);
-  color: var(--primary-foreground);
+  padding: 1px 6px;
+  background: color-mix(in oklch, var(--success) 16%, transparent);
+  color: var(--success);
   border-radius: 4px;
   font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  flex-shrink: 0;
 }
 
-.competition-subtitle {
-  margin: 0;
-  font-size: 11px;
-  color: var(--muted-foreground);
-  white-space: nowrap;
-}
-
-.view-leaderboard-link {
+.cp-leaderboard-link {
   background: none;
   border: none;
   color: var(--primary);
@@ -84,161 +74,426 @@
   padding: 0;
   text-decoration: underline;
   text-underline-offset: 2px;
-  transition: opacity 0.2s;
+  white-space: nowrap;
+  opacity: 0.9;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.cp-leaderboard-link:hover { opacity: 1; }
+
+/* Center: ranks + stats displayed as metric items */
+.cp-header-center {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Vertical divider between ranks and stats */
+.cp-metric-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* Each metric: stacked label + value */
+.cp-metric-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.cp-metric-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
   white-space: nowrap;
 }
 
-.view-leaderboard-link:hover {
-  opacity: 0.8;
+.cp-metric-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
-/* Time section */
-.competition-time {
+.cp-metric-value.boosted { color: var(--primary); }
+.cp-metric-value.positive { color: var(--success); }
+.cp-metric-value.negative { color: var(--destructive); }
+.cp-metric-value.reward { color: var(--warning); }
+
+/* Right: timer + reward pool */
+.cp-header-right {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.time-label {
-  font-size: 10px;
-  color: var(--muted-foreground);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  font-weight: 600;
+.cp-timer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--primary-foreground);
+  border: 1px solid color-mix(in oklch, var(--primary) 16%, transparent);
+  border-radius: 6px;
 }
 
-.time-value {
+.cp-timer-label {
+  font-size: 9px;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.cp-timer-value {
   font-size: 12px;
   font-weight: 700;
   color: var(--primary);
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
+  font-variant-numeric: tabular-nums;
 }
 
-/* User stats - inline */
-.competition-user-stats {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.cp-reward {
   padding: 4px 10px;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  flex-shrink: 0;
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  border: 1px solid color-mix(in oklch, var(--primary) 16%, transparent);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
 }
 
-.stat-item {
+/* ========== CARDS GRID ========== */
+.cp-cards {
+  display: grid;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Dynamic grid: auto-fill cards up to 3 */
+.cp-cards[data-cols="1"] { grid-template-columns: 1fr; }
+.cp-cards[data-cols="2"] { grid-template-columns: 1fr 1fr; }
+.cp-cards[data-cols="3"] { grid-template-columns: 1fr 1fr 1fr; }
+
+/* O2 card pattern — uses secondary for blue-tinted bg */
+.cp-card {
+  background: var(--secondary);
+  border: 1px solid color-mix(in oklch, var(--primary) 16%, transparent);
+  border-radius: var(--radius);
+  padding: 10px 12px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.cp-card-title {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+/* ========== CARD: MARKET BOOSTS — 2-up chip grid ========== */
+.cp-boosts-chips {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 4px;
 }
 
-.stat-label {
+.cp-boost-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--primary) 10%, transparent);
+}
+
+.cp-boost-chip.first {
+  background: color-mix(in oklch, var(--success) 12%, transparent);
+  border-color: color-mix(in oklch, var(--success) 10%, transparent);
+}
+
+.cp-boost-chip-pair {
   font-size: 10px;
-  color: var(--muted-foreground);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  font-weight: 600;
-}
-
-.stat-value {
-  font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--foreground);
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
+  white-space: nowrap;
 }
 
-.stat-value.rank {
+.cp-boost-chip-mult {
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--primary);
 }
 
-.stat-value.positive {
+.cp-boost-chip.first .cp-boost-chip-mult {
   color: var(--success);
 }
 
-.stat-value.negative {
-  color: var(--destructive);
-}
+/* ========== CARD: DAILY BOOSTER ========== */
 
-/* Reward stat styling */
-.stat-item.reward-stat {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 215, 0, 0.05) 100%);
-  border: 1px solid rgba(255, 215, 0, 0.3);
-  border-radius: 4px;
-  padding: 4px 8px;
-  margin-left: 4px;
-}
-
-.stat-value.reward {
-  color: #FFD700;
-  font-weight: 700;
-}
-
-/* Right side container */
-.competition-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-/* Reward section */
-.competition-reward {
+/* Top row: title + boost % + resets timer */
+.cp-daily-top {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  background: var(--muted);
+  margin-bottom: 8px;
+}
+
+.cp-boost-pct {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
   border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.reward-label {
   font-size: 10px;
-  color: var(--muted-foreground);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  font-weight: 700;
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  color: var(--primary);
 }
 
-.reward-value {
+.cp-resets {
+  font-size: 9px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+/* Progress row: volume/target inline | bar | percent */
+.cp-daily-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cp-daily-vol-inline {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-vol-current {
   font-size: 12px;
   font-weight: 700;
   color: var(--foreground);
 }
 
-@media (max-width: 900px) {
-  .competition-row {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .competition-info {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .competition-right {
-    margin-left: 0;
-  }
+.cp-vol-separator {
+  font-size: 10px;
+  color: var(--muted-foreground);
 }
 
-@media (max-width: 600px) {
-  .competition-user-stats {
-    flex-wrap: wrap;
+.cp-vol-target {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.cp-target-met {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+/* O2 pill progress bar */
+.cp-progress-track {
+  flex: 1;
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  border: 1px solid color-mix(in oklch, var(--primary) 16%, transparent);
+  border-radius: 9999px;
+  padding: 1px;
+  min-width: 0;
+}
+
+.cp-progress-fill {
+  background: var(--primary);
+  border-radius: 9999px;
+  height: 4px;
+  transition: width 0.3s ease;
+  min-width: 4px;
+}
+
+.cp-progress-fill.met {
+  background: var(--success);
+}
+
+.cp-progress-pct {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ========== CARD: STREAK & INFO — day boxes ========== */
+
+/* Header row: title + streak count + day counter + super boost + lottery */
+.cp-streak-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.cp-streak-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-streak-day {
+  font-size: 9px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Super boost badge */
+.cp-sb-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.cp-sb-badge.active {
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+
+.cp-sb-badge.lost {
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  color: var(--destructive);
+}
+
+.cp-sb-badge.eligible {
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  color: var(--primary);
+  opacity: 0.8;
+}
+
+/* Lottery inline (compact) */
+.cp-lottery-inline {
+  font-size: 9px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+/* Day boxes grid */
+.cp-day-boxes {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.cp-day-box {
+  width: 22px;
+  height: 20px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  border: 1px solid transparent;
+}
+
+.cp-day-num {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  opacity: 0.5;
+}
+
+/* Met = green fill */
+.cp-day-box.met {
+  background: color-mix(in oklch, var(--success) 22%, transparent);
+  border-color: color-mix(in oklch, var(--success) 30%, transparent);
+}
+.cp-day-box.met .cp-day-num {
+  color: var(--success);
+  opacity: 1;
+}
+
+/* Failed = red fill */
+.cp-day-box.failed {
+  background: color-mix(in oklch, var(--destructive) 18%, transparent);
+  border-color: color-mix(in oklch, var(--destructive) 25%, transparent);
+}
+.cp-day-box.failed .cp-day-num {
+  color: var(--destructive);
+  opacity: 1;
+}
+
+/* Current = blue with border + glow */
+.cp-day-box.current {
+  background: color-mix(in oklch, var(--primary) 24%, transparent);
+  border-color: color-mix(in oklch, var(--primary) 50%, transparent);
+  box-shadow: 0 0 6px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+.cp-day-box.current .cp-day-num {
+  color: var(--primary);
+  opacity: 1;
+  font-weight: 700;
+}
+
+/* Future = subtle blue tint */
+.cp-day-box.future {
+  background: color-mix(in oklch, var(--primary) 6%, transparent);
+}
+.cp-day-box.future .cp-day-num {
+  opacity: 0.3;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+  .cp-cards {
+    grid-template-columns: 1fr !important;
+  }
+  .cp-header {
+    flex-direction: column;
+    align-items: flex-start;
     gap: 8px;
   }
-
-  .competition-subtitle {
-    display: none;
+  .cp-header-center {
+    justify-content: flex-start;
+    gap: 12px;
   }
-
-  .competition-right {
-    flex-wrap: wrap;
+  .cp-header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .cp-metric-divider {
+    display: none;
   }
 }
