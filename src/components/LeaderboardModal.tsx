@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { LeaderboardResponse, LeaderboardItem, SubRankingEntry, DailyRaceItem, DisqualifiedTraderEntry, SpecialPosition } from '../types/competition'
+import { LeaderboardResponse, SubRankingEntry, DailyRaceItem, DisqualifiedTraderEntry } from '../types/competition'
 import './LeaderboardModal.css'
 
 interface LeaderboardModalProps {
@@ -9,7 +9,7 @@ interface LeaderboardModalProps {
   leaderboardData: LeaderboardResponse | null
 }
 
-type TabId = 'leaderboard' | 'taker' | 'maker' | 'pnl' | 'lottery'
+type TabId = 'taker' | 'maker' | 'pnl' | 'lottery'
 
 interface TabConfig {
   id: TabId
@@ -18,7 +18,7 @@ interface TabConfig {
 
 export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: LeaderboardModalProps) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState<TabId>('leaderboard')
+  const [activeTab, setActiveTab] = useState<TabId | null>(null)
   const [showDisqualified, setShowDisqualified] = useState(false)
 
   if (!isOpen) return null
@@ -32,9 +32,9 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
     })
   }
 
-  // Determine available tabs
+  // Determine available tabs — no main leaderboard tab
   const configuredTabs = leaderboardData?.assets?.tabs
-  const tabs: TabConfig[] = [{ id: 'leaderboard', label: t('leaderboard.tab_leaderboard') }]
+  const tabs: TabConfig[] = []
 
   const hasTab = (name: string) => {
     if (configuredTabs) return configuredTabs.includes(name)
@@ -42,18 +42,20 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
   }
 
   if (hasTab('taker') || leaderboardData?.subRankingsTaker?.length) {
-    tabs.push({ id: 'taker', label: t('leaderboard.tab_taker_sprint') })
+    tabs.push({ id: 'taker', label: t('leaderboard.tab_taker_track') })
   }
   if (hasTab('maker') || leaderboardData?.subRankingsMaker?.length) {
-    tabs.push({ id: 'maker', label: t('leaderboard.tab_maker_arena') })
+    tabs.push({ id: 'maker', label: t('leaderboard.tab_maker_track') })
   }
   if (hasTab('pnl') || leaderboardData?.subRankingsPnl?.length) {
-    tabs.push({ id: 'pnl', label: t('leaderboard.tab_pnl') })
+    tabs.push({ id: 'pnl', label: t('leaderboard.tab_pnl_track') })
   }
   if (hasTab('lottery') || hasTab('daily_race') || leaderboardData?.dailyRaceItems?.length) {
-    tabs.push({ id: 'lottery', label: t('leaderboard.tab_lottery') })
+    tabs.push({ id: 'lottery', label: t('leaderboard.tab_daily_draw') })
   }
 
+  // Default to first available tab
+  const resolvedTab = activeTab && tabs.some(t => t.id === activeTab) ? activeTab : (tabs[0]?.id || 'taker')
   const showTabs = tabs.length > 1
 
   const formatNumber = (value: string, decimals: number = 9): string => {
@@ -117,112 +119,10 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
 
   const currentUserTraderId = leaderboardData?.currentUser?.traderId?.toLowerCase()
 
-  const getSpecialClass = (rank: string): string => {
-    const special = leaderboardData?.specialPositions?.[rank]
-    if (special) return `special-${special.color}`
-    return ''
-  }
-
-  const getSpecialPosition = (rank: string): SpecialPosition | undefined => {
-    return leaderboardData?.specialPositions?.[rank]
-  }
-
-  const renderMainLeaderboard = () => (
-    <>
-      <table className="leaderboard-table main-leaderboard-table">
-        <thead>
-          <tr>
-            <th>{t('leaderboard.rank')}</th>
-            <th>{t('leaderboard.prize')}</th>
-            <th>{t('leaderboard.trader')}</th>
-            <th>{t('leaderboard.score')}</th>
-            <th>{t('leaderboard.volume')}</th>
-            <th>{t('leaderboard.volume_24h')}</th>
-            <th>{t('leaderboard.pnl')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {leaderboardData?.items.map((item: LeaderboardItem) => {
-            const isCurrentUser = item.traderId?.toLowerCase() === currentUserTraderId
-            const specialPosition = getSpecialPosition(item.rank)
-            return (
-              <tr
-                key={item.traderId}
-                className={`${isCurrentUser ? 'current-user-row' : ''} ${getSpecialClass(item.rank)}`}
-              >
-                <td className="rank-cell">
-                  #{item.rank}
-                  {specialPosition && (
-                    <span className="special-label">
-                      {specialPosition.label}
-                    </span>
-                  )}
-                </td>
-                <td className="prize-cell">
-                  {leaderboardData?.prizePool?.rewards?.[item.rank]
-                    ? `$${leaderboardData.prizePool.rewards[item.rank]}`
-                    : '-'}
-                </td>
-                <td className="address-cell" title={item.traderId}>
-                  {formatAddress(item.traderId)}
-                  {item.superBoostStatus === 'active' && (
-                    <span className="super-boost-icon" title="Super Boost Active">SB</span>
-                  )}
-                </td>
-                <td className="numeric-cell">{item.score}</td>
-                <td className="numeric-cell">${formatVolume(item.volume)}</td>
-                <td className="numeric-cell volume-24h">${formatVolume(item.volume24h)}</td>
-                <td className={`numeric-cell ${parseFloat(item.pnl) >= 0 ? 'positive' : 'negative'}`}>
-                  {formatPnL(item.pnl)}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-
-      {/* Disqualified traders section */}
-      {leaderboardData?.disqualifiedTraders && leaderboardData.disqualifiedTraders.length > 0 && (
-        <div className="disqualified-section">
-          <button
-            className="disqualified-toggle"
-            onClick={() => setShowDisqualified(!showDisqualified)}
-          >
-            {t('leaderboard.disqualified')} ({leaderboardData.disqualifiedTraders.length})
-            <span className={`disqualified-arrow ${showDisqualified ? 'open' : ''}`}>&#9660;</span>
-          </button>
-          {showDisqualified && (
-            <table className="leaderboard-table disqualified-table">
-              <thead>
-                <tr>
-                  <th>{t('leaderboard.trader')}</th>
-                  <th>{t('leaderboard.volume')}</th>
-                  <th>{t('leaderboard.score')}</th>
-                  <th>{t('leaderboard.disqualified_reason')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leaderboardData.disqualifiedTraders.map((trader: DisqualifiedTraderEntry) => (
-                  <tr key={trader.traderId} className="disqualified-row">
-                    <td className="address-cell" title={trader.traderId}>
-                      {formatAddress(trader.traderId)}
-                    </td>
-                    <td className="numeric-cell">${formatVolume(trader.volume)}</td>
-                    <td className="numeric-cell">{trader.score}</td>
-                    <td className="reason-cell">{trader.adjustmentReason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </>
-  )
-
   const renderTakerTab = () => {
     const items = leaderboardData?.subRankingsTaker
     if (!items?.length) return <div className="no-data">{t('leaderboard.no_data')}</div>
+    const hasBoosted = items.some(item => item.takerVolumeBoosted)
     return (
       <table className="leaderboard-table sub-ranking-table">
         <thead>
@@ -230,6 +130,7 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
             <th>{t('leaderboard.rank')}</th>
             <th>{t('leaderboard.trader')}</th>
             <th>{t('leaderboard.taker_volume')}</th>
+            {hasBoosted && <th>{t('leaderboard.boosted_volume')}</th>}
             <th>{t('leaderboard.score')}</th>
           </tr>
         </thead>
@@ -239,8 +140,18 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
             return (
               <tr key={item.traderId} className={isCurrentUser ? 'current-user-row' : ''}>
                 <td className="rank-cell">#{item.rank}</td>
-                <td className="address-cell" title={item.traderId}>{formatAddress(item.traderId)}</td>
+                <td className="address-cell" title={item.traderId}>
+                  {formatAddress(item.traderId)}
+                  {item.superBoostStatus === 'active' && (
+                    <span className="super-boost-icon" title="Super Boost Active">SB</span>
+                  )}
+                </td>
                 <td className="numeric-cell">${item.takerVolume ? formatVolume(item.takerVolume) : formatVolume(item.volume)}</td>
+                {hasBoosted && (
+                  <td className="numeric-cell boosted-vol">
+                    {item.takerVolumeBoosted ? `$${formatVolume(item.takerVolumeBoosted)}` : '-'}
+                  </td>
+                )}
                 <td className="numeric-cell">{item.score}</td>
               </tr>
             )
@@ -253,6 +164,7 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
   const renderMakerTab = () => {
     const items = leaderboardData?.subRankingsMaker
     if (!items?.length) return <div className="no-data">{t('leaderboard.no_data')}</div>
+    const hasBoosted = items.some(item => item.makerVolumeBoosted)
     return (
       <table className="leaderboard-table sub-ranking-table">
         <thead>
@@ -260,6 +172,7 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
             <th>{t('leaderboard.rank')}</th>
             <th>{t('leaderboard.trader')}</th>
             <th>{t('leaderboard.maker_volume')}</th>
+            {hasBoosted && <th>{t('leaderboard.boosted_volume')}</th>}
             <th>{t('leaderboard.maker_share')}</th>
             <th>{t('leaderboard.score')}</th>
           </tr>
@@ -270,8 +183,18 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
             return (
               <tr key={item.traderId} className={isCurrentUser ? 'current-user-row' : ''}>
                 <td className="rank-cell">#{item.rank}</td>
-                <td className="address-cell" title={item.traderId}>{formatAddress(item.traderId)}</td>
+                <td className="address-cell" title={item.traderId}>
+                  {formatAddress(item.traderId)}
+                  {item.superBoostStatus === 'active' && (
+                    <span className="super-boost-icon" title="Super Boost Active">SB</span>
+                  )}
+                </td>
                 <td className="numeric-cell">${item.makerVolume ? formatVolume(item.makerVolume) : formatVolume(item.volume)}</td>
+                {hasBoosted && (
+                  <td className="numeric-cell boosted-vol">
+                    {item.makerVolumeBoosted ? `$${formatVolume(item.makerVolumeBoosted)}` : '-'}
+                  </td>
+                )}
                 <td className="numeric-cell">{item.makerShare != null ? `${(item.makerShare * 100).toFixed(1)}%` : '-'}</td>
                 <td className="numeric-cell">{item.score}</td>
               </tr>
@@ -283,36 +206,46 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
   }
 
   const renderPnlTab = () => {
-    const items = leaderboardData?.subRankingsPnl
-    if (!items?.length) return <div className="no-data">{t('leaderboard.no_data')}</div>
+    const allItems = leaderboardData?.subRankingsPnl
+    if (!allItems?.length) return <div className="no-data">{t('leaderboard.no_data')}</div>
+    // Filter to only qualified traders (min volume + positive PnL)
+    const items = allItems.filter(item => item.isQualifiedPnl !== false)
+    if (!items.length) return <div className="no-data">{t('leaderboard.no_data')}</div>
     return (
-      <table className="leaderboard-table sub-ranking-table">
-        <thead>
-          <tr>
-            <th>{t('leaderboard.rank')}</th>
-            <th>{t('leaderboard.trader')}</th>
-            <th>{t('leaderboard.realized_pnl')}</th>
-            <th>{t('leaderboard.volume')}</th>
-            <th>{t('leaderboard.score')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item: SubRankingEntry) => {
-            const isCurrentUser = item.traderId?.toLowerCase() === currentUserTraderId
-            return (
-              <tr key={item.traderId} className={isCurrentUser ? 'current-user-row' : ''}>
-                <td className="rank-cell">#{item.rank}</td>
-                <td className="address-cell" title={item.traderId}>{formatAddress(item.traderId)}</td>
-                <td className={`numeric-cell ${item.realizedPnl && parseFloat(item.realizedPnl) >= 0 ? 'positive' : 'negative'}`}>
-                  {item.realizedPnl ? formatPnL(item.realizedPnl) : '-'}
-                </td>
-                <td className="numeric-cell">${formatVolume(item.volume)}</td>
-                <td className="numeric-cell">{item.score}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <>
+        {leaderboardData?.pnlRankingConfig?.minVolume && (
+          <div className="pnl-eligibility-note">
+            {t('leaderboard.pnl_min_volume')}: ${formatVolume(leaderboardData.pnlRankingConfig.minVolume)}
+          </div>
+        )}
+        <table className="leaderboard-table sub-ranking-table">
+          <thead>
+            <tr>
+              <th>{t('leaderboard.rank')}</th>
+              <th>{t('leaderboard.trader')}</th>
+              <th>{t('leaderboard.realized_pnl')}</th>
+              <th>{t('leaderboard.volume')}</th>
+              <th>{t('leaderboard.score')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item: SubRankingEntry) => {
+              const isCurrentUser = item.traderId?.toLowerCase() === currentUserTraderId
+              return (
+                <tr key={item.traderId} className={isCurrentUser ? 'current-user-row' : ''}>
+                  <td className="rank-cell">#{item.rank}</td>
+                  <td className="address-cell" title={item.traderId}>{formatAddress(item.traderId)}</td>
+                  <td className={`numeric-cell ${item.realizedPnl && parseFloat(item.realizedPnl) >= 0 ? 'positive' : 'negative'}`}>
+                    {item.realizedPnl ? formatPnL(item.realizedPnl) : '-'}
+                  </td>
+                  <td className="numeric-cell">${formatVolume(item.volume)}</td>
+                  <td className="numeric-cell">{item.score}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </>
     )
   }
 
@@ -347,13 +280,12 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
   }
 
   const renderActiveTab = () => {
-    switch (activeTab) {
-      case 'leaderboard': return renderMainLeaderboard()
+    switch (resolvedTab) {
       case 'taker': return renderTakerTab()
       case 'maker': return renderMakerTab()
       case 'pnl': return renderPnlTab()
       case 'lottery': return renderLotteryTab()
-      default: return renderMainLeaderboard()
+      default: return renderTakerTab()
     }
   }
 
@@ -396,13 +328,52 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
           </div>
         )}
 
+        {/* Disqualified traders (shown above tabs if present) */}
+        {leaderboardData?.disqualifiedTraders && leaderboardData.disqualifiedTraders.length > 0 && (
+          <div className="disqualified-section-header">
+            <button
+              className="disqualified-toggle"
+              onClick={() => setShowDisqualified(!showDisqualified)}
+            >
+              {t('leaderboard.disqualified')} ({leaderboardData.disqualifiedTraders.length})
+              <span className={`disqualified-arrow ${showDisqualified ? 'open' : ''}`}>&#9660;</span>
+            </button>
+            {showDisqualified && (
+              <div className="disqualified-table-wrap">
+                <table className="leaderboard-table disqualified-table">
+                  <thead>
+                    <tr>
+                      <th>{t('leaderboard.trader')}</th>
+                      <th>{t('leaderboard.volume')}</th>
+                      <th>{t('leaderboard.score')}</th>
+                      <th>{t('leaderboard.disqualified_reason')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaderboardData.disqualifiedTraders.map((trader: DisqualifiedTraderEntry) => (
+                      <tr key={trader.traderId} className="disqualified-row">
+                        <td className="address-cell" title={trader.traderId}>
+                          {formatAddress(trader.traderId)}
+                        </td>
+                        <td className="numeric-cell">${formatVolume(trader.volume)}</td>
+                        <td className="numeric-cell">{trader.score}</td>
+                        <td className="reason-cell">{trader.adjustmentReason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tab bar */}
         {showTabs && (
           <div className="leaderboard-tab-bar">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                className={`leaderboard-tab ${activeTab === tab.id ? 'active' : ''}`}
+                className={`leaderboard-tab ${resolvedTab === tab.id ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab.id)}
               >
                 {tab.label}
@@ -411,7 +382,7 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
           </div>
         )}
 
-        <div className="leaderboard-table-container" key={activeTab}>
+        <div className="leaderboard-table-container" key={resolvedTab}>
           {renderActiveTab()}
         </div>
       </div>

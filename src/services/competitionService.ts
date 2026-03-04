@@ -171,6 +171,9 @@ class CompetitionService {
     // Parse market boosts
     data.marketBoosts = data.marketBoosts || data.market_boosts || undefined
 
+    // Parse PnL ranking config
+    data.pnlRankingConfig = data.pnlRankingConfig || data.pnl_ranking_config || undefined
+
     // Parse prize pool active milestone
     if (data.prizePool?.activeMilestone || data.prize_pool?.active_milestone) {
       if (!data.prizePool) {

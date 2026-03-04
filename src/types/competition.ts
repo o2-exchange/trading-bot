@@ -48,10 +48,18 @@ export interface SubRankingEntry {
   score: number
   volume: string
   takerVolume?: string
+  takerVolumeBoosted?: string
   makerVolume?: string
+  makerVolumeBoosted?: string
   makerShare?: number
   realizedPnl?: string
   superBoostStatus?: string
+  isQualifiedPnl?: boolean
+}
+
+export interface LotteryWinDetail {
+  period?: number
+  amount?: string
 }
 
 export interface DailyRaceItem {
@@ -61,6 +69,7 @@ export interface DailyRaceItem {
   dailyTicketsEarned: number
   dailyVolume: string
   nextTicketAt?: string
+  wins?: LotteryWinDetail[]
 }
 
 export interface DisqualifiedTraderEntry {
@@ -233,6 +242,10 @@ export interface LeaderboardResponse {
   currentUserDailyRace?: DailyRaceItem
   disqualifiedTraders?: DisqualifiedTraderEntry[]
   pnlWeights?: Record<string, number>
+  pnlRankingConfig?: {
+    minVolume?: string
+    requirePositivePnl?: boolean
+  }
   totalRewards?: string
   isComplete?: boolean
 }
