@@ -9,7 +9,7 @@ export interface OrderConfig {
   
   // Price Configuration
   priceMode: 'offsetFromMid' | 'offsetFromBestBid' | 'offsetFromBestAsk' | 'market'
-  priceOffsetPercent: number // % offset from reference price (positive = above, negative = below)
+  priceOffsetPercent: number // % offset from reference price (buys below, sells above)
   
   // Spread Management
   maxSpreadPercent: number // Don't trade if spread exceeds this %

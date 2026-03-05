@@ -354,7 +354,7 @@ function StrategySlide({ t }: { t: (key: string) => string }) {
         </div>
         <div className="callout-item">
           <span className="callout">4</span>
-          <div><strong>{t('strategy.position_sizing')}</strong><p>{t('welcome.position_sizing_callout')}</p></div>
+          <div><strong>{t('strategy.position_sizing.title')}</strong><p>{t('welcome.position_sizing_callout')}</p></div>
         </div>
         <div className="callout-item">
           <span className="callout">5</span>

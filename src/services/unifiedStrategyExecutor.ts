@@ -10,6 +10,14 @@ import { db } from './dbService'
 import { validateOrderParams } from '../utils/orderValidation'
 
 /**
+ * Extract price from an orderbook level entry.
+ * Handles both tuple format [price, quantity] and object format {price, quantity}.
+ */
+function getEntryPrice(entry: [string, string] | { price: string; quantity: string }): string {
+  return Array.isArray(entry) ? entry[0] : entry.price
+}
+
+/**
  * Rounds down a quantity to market's allowed precision.
  * Uses market's step_size if available, otherwise uses base.max_precision.
  */
@@ -354,6 +362,7 @@ class UnifiedStrategyExecutor {
         return {
           executed: false,
           orders: [],
+          nextRunAt,
         }
       }
 
@@ -526,41 +535,58 @@ class UnifiedStrategyExecutor {
         referencePrice = new Decimal(ticker.last_price).div(10 ** market.quote.decimals)
         break
       
-      case 'offsetFromBestBid':
-        if (orderBook && orderBook.bids && orderBook.bids.length > 0 && orderBook.bids[0] && orderBook.bids[0][0]) {
-          referencePrice = new Decimal(orderBook.bids[0][0]).div(10 ** market.quote.decimals)
+      case 'offsetFromBestBid': {
+        const bidPrice = orderBook?.bids?.[0] ? getEntryPrice(orderBook.bids[0]) : undefined
+        if (bidPrice) {
+          referencePrice = new Decimal(bidPrice).div(10 ** market.quote.decimals)
         } else {
           referencePrice = new Decimal(ticker.last_price).div(10 ** market.quote.decimals)
         }
         break
-      
-      case 'offsetFromBestAsk':
-        if (orderBook && orderBook.asks && orderBook.asks.length > 0 && orderBook.asks[0] && orderBook.asks[0][0]) {
-          referencePrice = new Decimal(orderBook.asks[0][0]).div(10 ** market.quote.decimals)
+      }
+
+      case 'offsetFromBestAsk': {
+        const askPrice = orderBook?.asks?.[0] ? getEntryPrice(orderBook.asks[0]) : undefined
+        if (askPrice) {
+          referencePrice = new Decimal(askPrice).div(10 ** market.quote.decimals)
         } else {
           referencePrice = new Decimal(ticker.last_price).div(10 ** market.quote.decimals)
         }
         break
-      
+      }
+
       case 'offsetFromMid':
-      default:
+      default: {
         // Calculate mid price from orderbook or use ticker
-        if (orderBook && orderBook.bids && orderBook.bids.length > 0 && orderBook.asks && orderBook.asks.length > 0 &&
-            orderBook.bids[0] && orderBook.bids[0][0] && orderBook.asks[0] && orderBook.asks[0][0]) {
-          const bestBid = new Decimal(orderBook.bids[0][0]).div(10 ** market.quote.decimals)
-          const bestAsk = new Decimal(orderBook.asks[0][0]).div(10 ** market.quote.decimals)
+        const midBidPrice = orderBook?.bids?.[0] ? getEntryPrice(orderBook.bids[0]) : undefined
+        const midAskPrice = orderBook?.asks?.[0] ? getEntryPrice(orderBook.asks[0]) : undefined
+        if (midBidPrice && midAskPrice) {
+          const bestBid = new Decimal(midBidPrice).div(10 ** market.quote.decimals)
+          const bestAsk = new Decimal(midAskPrice).div(10 ** market.quote.decimals)
           referencePrice = bestBid.plus(bestAsk).div(2)
         } else {
           referencePrice = new Decimal(ticker.last_price).div(10 ** market.quote.decimals)
         }
         break
+      }
     }
 
     // Apply offset
     // Buy BELOW reference price (subtract offset) - pay less
     // Sell ABOVE reference price (add offset) - receive more
-    const buyPrice = referencePrice.mul(1 - (orderConfig.priceOffsetPercent / 100))
-    const sellPrice = referencePrice.mul(1 + (orderConfig.priceOffsetPercent / 100))
+    const offsetPct = orderConfig.priceOffsetPercent ?? 0
+    const buyPrice = referencePrice.mul(1 - (offsetPct / 100))
+    const sellPrice = referencePrice.mul(1 + (offsetPct / 100))
+
+    if (offsetPct > 0) {
+      console.log('[UnifiedStrategyExecutor] Price offset applied:', {
+        priceMode: orderConfig.priceMode,
+        referencePrice: referencePrice.toString(),
+        offsetPercent: `${offsetPct}%`,
+        buyPrice: buyPrice.toString(),
+        sellPrice: sellPrice.toString(),
+      })
+    }
 
     return { buyPrice, sellPrice }
   }
@@ -715,8 +741,9 @@ class UnifiedStrategyExecutor {
     ownerAddress: string
   ): Promise<OrderExecution | null> {
     // Validate and cap against orderbook best ask price for limit orders
-    if (orderBook?.asks?.[0]?.[0]) {
-      const bestAskPrice = new Decimal(orderBook.asks[0][0]).div(10 ** market.quote.decimals)
+    const capAskPrice = orderBook?.asks?.[0] ? getEntryPrice(orderBook.asks[0]) : undefined
+    if (capAskPrice) {
+      const bestAskPrice = new Decimal(capAskPrice).div(10 ** market.quote.decimals)
       if (buyPriceHuman.gt(bestAskPrice)) {
         if (config.orderConfig.orderType === 'Spot') {
           // For limit orders, cap buy price to best ask to avoid immediate market execution
@@ -764,8 +791,9 @@ class UnifiedStrategyExecutor {
     }
 
     // Additional orderbook validation for buy orders
-    if (orderBook && orderBook.asks && orderBook.asks.length > 0 && orderBook.asks[0] && orderBook.asks[0][0]) {
-      const bestAskPrice = new Decimal(orderBook.asks[0][0]).div(10 ** market.quote.decimals)
+    const valAskPrice = orderBook?.asks?.[0] ? getEntryPrice(orderBook.asks[0]) : undefined
+    if (valAskPrice) {
+      const bestAskPrice = new Decimal(valAskPrice).div(10 ** market.quote.decimals)
       console.log('[UnifiedStrategyExecutor] Buy order validation:', {
         buyPrice: buyPriceHuman.toString(),
         bestAskPrice: bestAskPrice.toString(),
@@ -910,8 +938,9 @@ class UnifiedStrategyExecutor {
 
     // Get current best bid price from orderbook for validation
     let bestBidPrice: Decimal | null = null
-    if (orderBook && orderBook.bids && orderBook.bids.length > 0 && orderBook.bids[0] && orderBook.bids[0][0]) {
-      bestBidPrice = new Decimal(orderBook.bids[0][0]).div(10 ** market.quote.decimals)
+    const sellBidPrice = orderBook?.bids?.[0] ? getEntryPrice(orderBook.bids[0]) : undefined
+    if (sellBidPrice) {
+      bestBidPrice = new Decimal(sellBidPrice).div(10 ** market.quote.decimals)
     }
 
     // Skip profit protection check if we're forcing a limit order at the profitable price
@@ -963,8 +992,9 @@ class UnifiedStrategyExecutor {
     }
 
     // Additional orderbook validation for sell orders
-    if (orderBook && orderBook.bids && orderBook.bids.length > 0 && orderBook.bids[0] && orderBook.bids[0][0]) {
-      const bestBidPrice = new Decimal(orderBook.bids[0][0]).div(10 ** market.quote.decimals)
+    const valBidPrice = orderBook?.bids?.[0] ? getEntryPrice(orderBook.bids[0]) : undefined
+    if (valBidPrice) {
+      const bestBidPrice = new Decimal(valBidPrice).div(10 ** market.quote.decimals)
       console.log('[UnifiedStrategyExecutor] Sell order validation:', {
         sellPrice: adjustedSellPrice.toString(),
         originalSellPrice: sellPriceHuman.toString(),

@@ -358,7 +358,7 @@ export default function CompetitionPanel({ walletAddress }: CompetitionPanelProp
               <div className="cp-daily-top">
                 <span className="cp-card-title" style={{ marginBottom: 0 }}>{t('competition.daily_target')}</span>
                 {currentBoostBp > 0 && (
-                  <span className="cp-boost-pct">+{(currentBoostBp / 100).toFixed(0)}%</span>
+                  <span className="cp-boost-pct">+{((currentBoostBp / 100) - 100).toFixed(0)}%</span>
                 )}
                 {streakTimeRemaining && (
                   <span className="cp-resets">{t('competition.resets_in')} {streakTimeRemaining}</span>

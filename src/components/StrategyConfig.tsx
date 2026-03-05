@@ -111,7 +111,7 @@ const TOOLTIPS = {
   orderType: "Market orders execute immediately at best available price. Limit orders are placed on the orderbook and wait for a match at your specified price.",
   priceMode: "The reference price used to calculate your order price. Mid = average of best bid/ask. Best Bid/Ask = top of orderbook. Market = last traded price.",
   side: "Buy: Only place buy orders. Sell: Only place sell orders. Both: Place both buy and sell orders each cycle.",
-  priceOffsetPercent: "Percentage offset from reference price. For buys, adds to price (buy higher). For sells, subtracts from price (sell lower). 0% = exact reference price.",
+  priceOffsetPercent: "Percentage offset from reference price. Buys are placed below reference (buy cheaper), sells above (sell higher). 0% = exact reference price.",
   maxSpreadPercent: "Maximum bid-ask spread allowed. If spread exceeds this, no orders are placed. Prevents trading in illiquid markets.",
   maxOpenOrders: "Maximum open orders per side. E.g., 2 means max 2 buy orders + 2 sell orders at once. Prevents over-exposure.",
 
@@ -471,7 +471,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
 
     const wallet = walletService.getConnectedWallet()
     if (!wallet) {
-      addToast(t('wallet.not_connected'), 'error')
+      addToast(t('errors.wallet_not_connected'), 'error')
       setShowCancelOrdersConfirm(false)
       setPendingAction(null)
       return
@@ -887,7 +887,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                             <span className="cfg-label">Mode:</span> {formatPriceMode(config.config.orderConfig.priceMode)}
                           </span>
                           <span className="cfg-text">
-                            <span className="cfg-label">Offset:</span> {config.config.orderConfig.priceOffsetPercent?.toFixed(2) || '0.00'}% ·
+                            <span className="cfg-label">Offset:</span> {config.config.orderConfig.priceOffsetPercent?.toFixed(3) || '0.000'}% ·
                             <span className="cfg-label">Spread:</span> {config.config.orderConfig.maxSpreadPercent?.toFixed(1) || '0'}% ·
                             <span className="cfg-label">Orders:</span> {config.config.orderManagement?.maxOpenOrders || 2}
                           </span>
@@ -905,10 +905,10 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                         {/* Right: Risk management */}
                         <div className="config-right">
                           <span className={config.config.orderManagement?.onlySellAboveBuyPrice ? 'risk-on' : 'risk-off'}>
-                            Sell Above{config.config.orderManagement?.onlySellAboveBuyPrice ? ` +${config.config.riskManagement?.takeProfitPercent || 0.02}%` : ''}
+                            Sell Above{config.config.orderManagement?.onlySellAboveBuyPrice ? ` +${(config.config.riskManagement?.takeProfitPercent || 0.02).toFixed(3)}%` : ''}
                           </span>
                           <span className={config.config.riskManagement?.stopLossEnabled ? 'risk-on' : 'risk-off'}>
-                            Stop Loss{config.config.riskManagement?.stopLossEnabled ? ` ${config.config.riskManagement?.stopLossPercent}%` : ''}
+                            Stop Loss{config.config.riskManagement?.stopLossEnabled ? ` ${(config.config.riskManagement?.stopLossPercent || 5).toFixed(1)}%` : ''}
                           </span>
                           <span className={config.config.riskManagement?.orderTimeoutEnabled ? 'risk-on' : 'risk-off'}>
                             Timeout{config.config.riskManagement?.orderTimeoutEnabled ? ` ${config.config.riskManagement?.orderTimeoutMinutes}m` : ''}
@@ -1242,7 +1242,7 @@ function StrategyConfigForm({
             onChange={(value) => updateOrderConfig({ priceOffsetPercent: value })}
             min={0}
             max={50}
-            step={0.01}
+            step={0.001}
           />
         </div>
         <div className="form-field">
@@ -1270,7 +1270,7 @@ function StrategyConfigForm({
       <div className="form-divider" />
 
       {/* Position Sizing */}
-      <div className="form-section-label">{t('strategy.position_sizing')}</div>
+      <div className="form-section-label">{t('strategy.position_sizing.title')}</div>
       <div className="form-row">
         <div className="form-field">
           <label className="label-with-tooltip">{t('strategy.size_mode')} <Tooltip text={TOOLTIPS.sizeMode} position="left" /></label>
@@ -1366,7 +1366,7 @@ function StrategyConfigForm({
             value={config.riskManagement?.takeProfitPercent ?? 0.02}
             onChange={(value) => updateRiskManagement({ takeProfitPercent: value })}
             min={0}
-            step={0.01}
+            step={0.001}
             disabled={!config.orderManagement.onlySellAboveBuyPrice}
           />
         </div>

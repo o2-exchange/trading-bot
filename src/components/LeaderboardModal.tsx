@@ -195,7 +195,7 @@ export default function LeaderboardModal({ isOpen, onClose, leaderboardData }: L
                     {item.makerVolumeBoosted ? `$${formatVolume(item.makerVolumeBoosted)}` : '-'}
                   </td>
                 )}
-                <td className="numeric-cell">{item.makerShare != null ? `${(item.makerShare * 100).toFixed(1)}%` : '-'}</td>
+                <td className="numeric-cell">{item.makerShare != null ? `${(Number(item.makerShare) / 100).toFixed(1)}%` : '-'}</td>
                 <td className="numeric-cell">{item.score}</td>
               </tr>
             )

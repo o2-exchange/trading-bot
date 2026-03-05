@@ -404,10 +404,14 @@ class OrderFulfillmentService {
         return null
       }
 
-      // Get best bid from orderbook
+      // Get best bid from orderbook (handle both [price, qty] tuple and {price, quantity} object formats)
       let bestBidPrice: Decimal | null = null
-      if (orderBook.bids && orderBook.bids.length > 0 && orderBook.bids[0] && orderBook.bids[0][0]) {
-        bestBidPrice = new Decimal(orderBook.bids[0][0]).div(10 ** market.quote.decimals)
+      if (orderBook.bids && orderBook.bids.length > 0 && orderBook.bids[0]) {
+        const bidEntry = orderBook.bids[0]
+        const bidPriceRaw = Array.isArray(bidEntry) ? bidEntry[0] : (bidEntry as { price: string }).price
+        if (bidPriceRaw) {
+          bestBidPrice = new Decimal(bidPriceRaw).div(10 ** market.quote.decimals)
+        }
       }
 
       // Determine sell price based on whether profit protection is enabled
@@ -528,7 +532,19 @@ class OrderFulfillmentService {
         return null
       }
 
-      // Check minimum order size
+      // Apply price offset if configured (sell ABOVE reference — receive more)
+      const offsetPct = configToUse.orderConfig.priceOffsetPercent ?? 0
+      if (offsetPct > 0) {
+        const originalSellPrice = sellPrice
+        sellPrice = sellPrice.mul(1 + (offsetPct / 100))
+        console.log('[OrderFulfillmentService] Applied price offset to auto-sell:', {
+          offsetPercent: offsetPct,
+          originalPrice: originalSellPrice.toString(),
+          adjustedPrice: sellPrice.toString()
+        })
+      }
+
+      // Check minimum order size using final adjusted sell price
       const orderValueUsd = quantityToSell.mul(sellPrice).toNumber()
       if (orderValueUsd < configToUse.positionSizing.minOrderSizeUsd) {
         console.log(`[OrderFulfillmentService] Order value $${orderValueUsd.toFixed(2)} below minimum $${configToUse.positionSizing.minOrderSizeUsd}, skipping immediate sell placement`)

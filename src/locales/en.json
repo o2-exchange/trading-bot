@@ -200,7 +200,6 @@
     "price_offset": "Price Offset %",
     "max_spread": "Max Spread %",
     "max_open_orders": "Max Open Orders",
-    "position_sizing": "Position Sizing",
     "size_mode": "Size Mode",
     "percent_balance": "% Balance",
     "fixed_usd": "Fixed USD",
@@ -282,7 +281,7 @@
       "order_type": "Market orders execute immediately at best available price. Limit orders are placed on the orderbook and wait for a match at your specified price.",
       "price_mode": "The reference price used to calculate your order price. Mid = average of best bid/ask. Best Bid/Ask = top of orderbook. Market = last traded price.",
       "side": "Buy: Only place buy orders. Sell: Only place sell orders. Both: Place both buy and sell orders each cycle.",
-      "price_offset": "Percentage offset from reference price. For buys, adds to price (buy higher). For sells, subtracts from price (sell lower). 0% = exact reference price.",
+      "price_offset": "Percentage offset from reference price. Buys are placed below reference (buy cheaper), sells above (sell higher). 0% = exact reference price.",
       "max_spread": "Maximum bid-ask spread allowed. If spread exceeds this, no orders are placed. Prevents trading in illiquid markets.",
       "max_open_orders": "Maximum open orders per side. E.g., 2 means max 2 buy orders + 2 sell orders at once. Prevents over-exposure.",
       "size_mode": "% Balance: Use percentage of available balance. Fixed USD: Use fixed dollar amount per order.",
@@ -603,6 +602,14 @@
   "release_notes": {
     "title": "Release Notes",
     "auto_update_note": "The app updates automatically when you refresh the page. No action needed to stay up-to-date.",
+    "mar_05": {
+      "orderbook_title": "Accurate Orderbook Pricing",
+      "orderbook_desc": "Fixed orderbook data parsing so best bid, best ask, and mid price references now read correctly from the exchange API. Strategies using orderbook-based pricing modes get accurate reference prices.",
+      "offset_title": "Price Offset on Auto-Sell",
+      "offset_desc": "Auto-sell orders placed after a buy fill now apply your configured price offset, consistent with regular sell orders.",
+      "display_title": "Competition Display Fixes",
+      "display_desc": "Fixed daily boost percentage and maker share percentage calculations in the competition panel and leaderboard to match the exchange."
+    },
     "mar_04": {
       "competition_ui_title": "New Competition Panel",
       "competition_ui_desc": "All-new competition panel built for the latest competition mechanics. See your ranks, volume, boosted volume, and PnL at a glance with market boost chips, daily volume target progress, and streak day tracking in a compact card layout.",
