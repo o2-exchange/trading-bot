@@ -3,7 +3,6 @@ import { sessionService } from './sessionService'
 import { eligibilityService } from './eligibilityService'
 import { useTermsOfUseStore } from '../stores/useTermsOfUseStore'
 import { useSessionStore } from '../stores/useSessionStore'
-import { useWelcomeStore } from '../stores/useWelcomeStore'
 import { walletService } from './walletService'
 import { marketService } from './marketService'
 import { whitelistService } from './whitelistService'
@@ -548,27 +547,15 @@ class AuthFlowService {
       // Clear pending session
       this.setState({ pendingSession: null })
 
-      // Check if welcome modal has been dismissed for this wallet
-      const welcomeStore = useWelcomeStore.getState()
-      const welcomeDismissed = welcomeStore.getDismissed(normalizedAddress)
-
-      if (!welcomeDismissed) {
-        this.setState({
-          state: 'awaitingWelcome',
-          sessionId: session.id,
-          isWhitelisted: true,  // User is whitelisted since session was created
-          error: null,
-        })
-        console.log('[AuthFlow] Showing welcome modal for first-time user')
-      } else {
-        this.setState({
-          state: 'ready',
-          sessionId: session.id,
-          isWhitelisted: true,  // User is whitelisted since session was created
-          error: null,
-        })
-        console.log('[AuthFlow] Auth flow complete - ready to trade')
-      }
+      // Welcome modal is now shown on first app load (in AppLayout),
+      // so always go straight to ready after session creation
+      this.setState({
+        state: 'ready',
+        sessionId: session.id,
+        isWhitelisted: true,  // User is whitelisted since session was created
+        error: null,
+      })
+      console.log('[AuthFlow] Auth flow complete - ready to trade')
     } catch (error: any) {
       console.error('[AuthFlow] ❌ Error creating session:', error)
       console.error('[AuthFlow] Error details:', {
@@ -608,23 +595,10 @@ class AuthFlowService {
   }
 
   async dismissWelcome(): Promise<void> {
-    try {
-      const wallet = walletService.getConnectedWallet()
-      if (!wallet) {
-        throw new Error('No wallet connected')
-      }
-
-      const normalizedAddress = wallet.address.toLowerCase()
-      const welcomeStore = useWelcomeStore.getState()
-      welcomeStore.setDismissed(normalizedAddress, true)
-
-      this.setState({ state: 'ready', error: null })
-      console.log('[AuthFlow] Welcome modal dismissed - ready to trade')
-    } catch (error: any) {
-      console.error('[AuthFlow] Error dismissing welcome:', error)
-      // Still transition to ready even on error
-      this.setState({ state: 'ready', error: null })
-    }
+    // Welcome modal is now shown on first app load (in AppLayout).
+    // This method is kept for backward compatibility but just transitions to ready.
+    this.setState({ state: 'ready', error: null })
+    console.log('[AuthFlow] Welcome modal dismissed - ready to trade')
   }
 
   reset() {

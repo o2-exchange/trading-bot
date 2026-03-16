@@ -5,7 +5,6 @@ import { walletService } from '../services/walletService'
 import { useWalletStore } from '../stores/useWalletStore'
 import TermsOfUseDialog from './TermsOfUseDialog'
 import SignMessageDialog from './SignMessageDialog'
-import WelcomeModal from './WelcomeModal'
 import { useToast } from './ToastProvider'
 
 interface AuthFlowOverlayProps {
@@ -114,10 +113,6 @@ export default function AuthFlowOverlay({ onAuthReady, onAuthStateChange }: Auth
       <SignMessageDialog
         isOpen={authState.state === 'awaitingSignature'}
         onClose={handleSignMessageClose}
-      />
-      <WelcomeModal
-        isOpen={authState.state === 'awaitingWelcome'}
-        onClose={() => authFlowService.dismissWelcome()}
       />
     </>
   )

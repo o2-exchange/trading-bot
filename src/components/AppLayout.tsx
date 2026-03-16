@@ -13,6 +13,7 @@ import { useVersionCheck } from '../hooks/useVersionCheck'
 import { CURRENT_VERSION } from '../constants/releaseNotes'
 import { useTradingStore } from '../stores/useTradingStore'
 import { useWalletStore } from '../stores/useWalletStore'
+import { useWelcomeStore } from '../stores/useWelcomeStore'
 import { balanceService } from '../services/balanceService'
 import './Dashboard.css'
 
@@ -32,7 +33,11 @@ export default function AppLayout() {
     setBalances,
   } = useTradingStore()
 
-  const [showWelcomeModal, setShowWelcomeModal] = useState(false)
+  const globalDismissed = useWelcomeStore((state) => state.globalDismissed)
+  const setGlobalDismissed = useWelcomeStore((state) => state.setGlobalDismissed)
+
+  // Show welcome modal on first ever load (before wallet connection)
+  const [showWelcomeModal, setShowWelcomeModal] = useState(!globalDismissed)
   const [showDepositDialog, setShowDepositDialog] = useState(false)
   const [showConnectWalletDialog, setShowConnectWalletDialog] = useState(false)
   const [showReleaseNotes, setShowReleaseNotes] = useState(false)
@@ -177,7 +182,10 @@ export default function AppLayout() {
       {showWelcomeModal && (
         <WelcomeModal
           isOpen={true}
-          onClose={() => setShowWelcomeModal(false)}
+          onClose={() => {
+            setShowWelcomeModal(false)
+            setGlobalDismissed(true)
+          }}
         />
       )}
 
