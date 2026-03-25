@@ -352,6 +352,7 @@ class UnifiedStrategyExecutor {
           executed: stopLossResult.orders.length > 0,
           orders: stopLossResult.orders,
           nextRunAt,
+          stopLossTriggered: true,
         }
       }
 

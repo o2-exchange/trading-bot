@@ -602,6 +602,14 @@
   "release_notes": {
     "title": "Release Notes",
     "auto_update_note": "The app updates automatically when you refresh the page. No action needed to stay up-to-date.",
+    "mar_25": {
+      "session_title": "Bot Stays Connected",
+      "session_desc": "Your bot will no longer disconnect unexpectedly during trading. Sessions are now resilient to temporary network issues and wallet interruptions, so you won't lose your session mid-trade.",
+      "timeout_title": "Flexible Order Timeout & Cycle Reset",
+      "timeout_desc": "Order timeout now supports seconds and minutes. New \"Reset cycle on sell timeout\" option lets your bot forget a stale buy price and start fresh when sell orders keep timing out, so it never gets stuck.",
+      "stoploss_title": "Smarter Stop Loss",
+      "stoploss_desc": "New \"Auto-reset\" option after stop loss lets your bot automatically start a fresh trading cycle instead of stopping. If you prefer manual control, the bot pauses with a one-click \"Reset & Resume\" button."
+    },
     "mar_05": {
       "orderbook_title": "Accurate Orderbook Pricing",
       "orderbook_desc": "Fixed orderbook data parsing so best bid, best ask, and mid price references now read correctly from the exchange API. Strategies using orderbook-based pricing modes get accurate reference prices.",

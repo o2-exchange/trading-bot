@@ -104,6 +104,23 @@
   transform: translateX(0);
 }
 
+.tooltip-wrapper.tooltip-top .tooltip-content {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.tooltip-wrapper.tooltip-top .tooltip-content::after,
+.tooltip-wrapper.tooltip-top .tooltip-content::before {
+  top: 100%;
+  bottom: auto;
+  border-top-color: var(--border);
+  border-bottom-color: transparent;
+}
+
+.tooltip-wrapper.tooltip-top .tooltip-content::before {
+  border-top-color: var(--surface-1);
+}
+
 /* Label with tooltip */
 .label-with-tooltip {
   display: flex;
@@ -348,6 +365,24 @@
   font-weight: 600;
   font-size: 11px;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
+}
+
+.stop-loss-paused-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #ef4444;
+}
+
+.stop-loss-paused-banner .btn-action {
+  padding: 3px 10px;
+  font-size: 11px;
 }
 
 .config-card-actions {

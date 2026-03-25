@@ -69,11 +69,13 @@ class TradingEngine {
   private onContextCallbacks: ContextCallback[] = []
   private onMultiContextCallbacks: MultiContextCallback[] = []
   private onTradingStateCallbacks: TradingStateCallback[] = []
+  private onStopLossPauseCallbacks: ((pausedMarkets: Set<string>) => void)[] = []
   private lastContext: TradingContext | null = null
   private marketContexts: Map<string, TradingContext> = new Map()
   private orderCancelListener: ((e: Event) => void) | null = null
   private configVersions: Map<string, number> = new Map() // Track config versions for change detection
   private sellTimeoutCounts: Map<string, number> = new Map() // Consecutive sell timeout cancellations per market
+  private stopLossPausedMarkets: Set<string> = new Set() // Markets paused after stop loss (when auto-reset is off)
   private consecutiveSessionErrors: number = 0 // Track consecutive "no active session" errors
   private static readonly MAX_SESSION_ERRORS = 5 // Auto-stop after this many consecutive session failures
   private consecutiveErrors: number = 0 // Track ALL consecutive errors for exponential backoff
@@ -158,6 +160,26 @@ class TradingEngine {
     }
   }
 
+  onStopLossPauseChange(callback: (pausedMarkets: Set<string>) => void): () => void {
+    this.onStopLossPauseCallbacks.push(callback)
+    return () => {
+      const index = this.onStopLossPauseCallbacks.indexOf(callback)
+      if (index > -1) {
+        this.onStopLossPauseCallbacks.splice(index, 1)
+      }
+    }
+  }
+
+  private emitStopLossPauseChange(): void {
+    this.onStopLossPauseCallbacks.forEach((callback) => {
+      try {
+        callback(this.stopLossPausedMarkets)
+      } catch (error) {
+        console.error('Error in stop loss pause callback:', error)
+      }
+    })
+  }
+
   private emitTradingStateChange(isActive: boolean): void {
     this.onTradingStateCallbacks.forEach((callback) => {
       try {
@@ -206,6 +228,13 @@ class TradingEngine {
     this.sellTimeoutCounts.clear()
     this.consecutiveSessionErrors = 0
     this.consecutiveErrors = 0
+
+    // Clean up old processed fills from IndexedDB (entries older than 24 hours)
+    try {
+      await orderFulfillmentService.cleanupOldProcessedFills()
+    } catch (error) {
+      console.warn('[TradingEngine] Failed to cleanup old processed fills:', error)
+    }
 
     // Get active strategy configs from database
     console.log('[TradingEngine] Querying active strategy configs...')
@@ -490,6 +519,10 @@ class TradingEngine {
     this.marketConfigs.clear()
     this.marketQueue = [] // Clear round-robin queue
     this.configVersions.clear() // Clear cached config versions
+    if (this.stopLossPausedMarkets.size > 0) {
+      this.stopLossPausedMarkets.clear()
+      this.emitStopLossPauseChange()
+    }
 
     // Notify listeners that trading has stopped
     this.emitTradingStateChange(false)
@@ -497,6 +530,54 @@ class TradingEngine {
 
   isActive(): boolean {
     return this.isRunning
+  }
+
+  /**
+   * Check if a market is paused due to stop loss
+   */
+  isMarketStopLossPaused(marketId: string): boolean {
+    return this.stopLossPausedMarkets.has(marketId)
+  }
+
+  /**
+   * Reset and resume a market that was paused after stop loss.
+   * Clears averageBuyPrice and lastFillPrices so the bot starts a fresh cycle.
+   */
+  async resetAndResumeAfterStopLoss(marketId: string): Promise<void> {
+    if (!this.stopLossPausedMarkets.has(marketId)) {
+      console.log(`[TradingEngine] Market ${marketId} is not paused by stop loss`)
+      return
+    }
+
+    try {
+      const storedConfig = await db.strategyConfigs.get(marketId)
+      if (storedConfig) {
+        await db.strategyConfigs.update(marketId, {
+          config: {
+            ...storedConfig.config,
+            averageBuyPrice: undefined,
+            averageSellPrice: undefined,
+            lastFillPrices: { buy: [], sell: [] },
+          },
+          version: (storedConfig.version ?? 0) + 1,
+        })
+      }
+
+      this.stopLossPausedMarkets.delete(marketId)
+      this.emitStopLossPauseChange()
+
+      // Update cached config so next cycle uses fresh state
+      const marketConfig = this.marketConfigs.get(marketId)
+      if (marketConfig) {
+        marketConfig.nextRunAt = Date.now() + 1000 // Resume in 1 second
+      }
+
+      const pair = marketConfig ? `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}` : marketId
+      console.log(`[TradingEngine] Reset and resumed ${pair} after stop loss`)
+      this.emitStatus(`${pair} reset and resumed after stop loss.`, 'success')
+    } catch (error) {
+      console.error(`[TradingEngine] Failed to reset market ${marketId} after stop loss:`, error)
+    }
   }
 
   /**
@@ -801,6 +882,13 @@ class TradingEngine {
           }
         }
 
+        // CHECK 0: Is this market paused due to stop loss?
+        if (this.stopLossPausedMarkets.has(marketId)) {
+          this.emitStatus(i18next.t('trading_console.stop_loss_paused', { pair, defaultValue: `${pair} paused after stop loss. Use Reset & Resume to restart.` }), 'warning')
+          marketConfig.nextRunAt = Date.now() + 60000 // Check again in 1 minute
+          return
+        }
+
         // CHECK 1: Is trading paused due to max session loss?
         // Get the current session to check P&L (reused later for context metrics)
         const currentSession = marketConfig.sessionId
@@ -992,6 +1080,23 @@ class TradingEngine {
           // Set next run time, let scheduler handle rotation
           marketConfig.nextRunAt = Date.now() + 10000
           return
+        }
+
+        // Handle stop loss trigger
+        if (result.stopLossTriggered) {
+          if (marketConfig.config.riskManagement?.autoResetAfterStopLoss) {
+            // Auto-reset: bot continues trading fresh (averageBuyPrice already cleared by executor)
+            console.log(`[TradingEngine] Stop loss triggered for ${pair} — auto-reset enabled, continuing fresh`)
+            this.emitStatus(i18next.t('trading_console.stop_loss_auto_reset', { pair, defaultValue: `Stop loss triggered for ${pair}. Auto-resetting and continuing...` }), 'warning')
+          } else {
+            // Pause market until manual reset
+            console.log(`[TradingEngine] Stop loss triggered for ${pair} — pausing until manual reset`)
+            this.stopLossPausedMarkets.add(marketId)
+            this.emitStopLossPauseChange()
+            this.emitStatus(i18next.t('trading_console.stop_loss_paused', { pair, defaultValue: `Stop loss triggered for ${pair}. Trading paused — use Reset & Resume to restart.` }), 'error')
+            marketConfig.nextRunAt = Date.now() + 60000
+            return
+          }
         }
 
         // Emit skip reason if present (e.g., spread exceeded max)
@@ -1564,7 +1669,9 @@ class TradingEngine {
       return cancelledOrderIds
     }
 
-    const timeoutMs = config.riskManagement.orderTimeoutMinutes * 60 * 1000
+    const unit = config.riskManagement.orderTimeoutUnit ?? 'minutes'
+    const multiplier = unit === 'seconds' ? 1000 : 60 * 1000
+    const timeoutMs = config.riskManagement.orderTimeoutMinutes * multiplier
     const cutoffTime = Date.now() - timeoutMs
 
     let sellTimeoutCount = 0
@@ -1576,7 +1683,9 @@ class TradingEngine {
           try {
             await orderService.cancelOrder(order.order_id, marketId, ownerAddress)
             cancelledOrderIds.push(order.order_id)
-            console.log(`[TradingEngine] Order timeout: Cancelled order ${order.order_id} (age: ${Math.floor((Date.now() - order.created_at) / 60000)} min)`)
+            const ageMs = Date.now() - order.created_at
+            const ageDisplay = unit === 'seconds' ? `${Math.floor(ageMs / 1000)}s` : `${Math.floor(ageMs / 60000)} min`
+            console.log(`[TradingEngine] Order timeout: Cancelled order ${order.order_id} (age: ${ageDisplay})`)
 
             // Track sell timeout cancellations for stale price detection
             if (order.side === OrderSide.Sell) {
@@ -1599,6 +1708,29 @@ class TradingEngine {
         const current = this.sellTimeoutCounts.get(marketId) || 0
         this.sellTimeoutCounts.set(marketId, current + sellTimeoutCount)
         console.log(`[TradingEngine] Sell timeout count for ${marketId}: ${current + sellTimeoutCount}`)
+
+        // Reset cycle: clear averageBuyPrice so bot starts a fresh buy-sell cycle
+        // instead of being stuck trying to sell above a stale buy price
+        if (config.riskManagement?.resetCycleOnSellTimeout && config.orderManagement?.onlySellAboveBuyPrice) {
+          console.log(`[TradingEngine] Resetting buy price for ${marketId} after sell timeout (starting fresh cycle)`)
+          try {
+            const storedConfig = await db.strategyConfigs.get(marketId)
+            if (storedConfig) {
+              await db.strategyConfigs.update(marketId, {
+                config: {
+                  ...storedConfig.config,
+                  averageBuyPrice: undefined,
+                  averageSellPrice: undefined,
+                  lastFillPrices: { buy: [], sell: [] },
+                },
+                version: (storedConfig.version ?? 0) + 1,
+              })
+              console.log(`[TradingEngine] Buy price reset for ${marketId}`)
+            }
+          } catch (error) {
+            console.error(`[TradingEngine] Failed to reset buy price for ${marketId}:`, error)
+          }
+        }
       }
 
       if (cancelledOrderIds.length > 0) {

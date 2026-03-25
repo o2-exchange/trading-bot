@@ -60,10 +60,13 @@ export interface RiskManagementConfig {
   // Stop Loss - Price Based
   stopLossEnabled: boolean
   stopLossPercent: number  // e.g., 5 = sell if price drops 5% below avg buy
+  autoResetAfterStopLoss?: boolean  // When true: clear buy price and continue trading after stop loss. When false: pause market until manual reset.
 
   // Stop Loss - Time Based (Order Timeout)
   orderTimeoutEnabled: boolean
-  orderTimeoutMinutes: number  // e.g., 30 = cancel if not filled in 30 min
+  orderTimeoutMinutes: number  // e.g., 30 = cancel if not filled in 30 min (also used for seconds when unit is 'seconds')
+  orderTimeoutUnit?: 'minutes' | 'seconds'  // default: 'minutes' for backward compat
+  resetCycleOnSellTimeout?: boolean  // When true + sell above buy enabled: clear averageBuyPrice on sell timeout so bot starts fresh cycle
 
   // Max Session Loss - pauses trading when session P&L drops below threshold
   maxSessionLossEnabled: boolean
@@ -157,7 +160,7 @@ export function getDefaultStrategyConfig(marketId: string): StrategyConfig {
       stopLossEnabled: false,
       stopLossPercent: 5,  // Sell if price drops 5% below avg buy
       orderTimeoutEnabled: false,
-      orderTimeoutMinutes: 30,  // Cancel orders not filled in 30 minutes
+      orderTimeoutMinutes: 15,  // Cancel orders not filled in 15 minutes
       maxSessionLossEnabled: false,
       maxSessionLossUsd: 100,  // Pause trading if session P&L drops to -$100
     },
@@ -295,4 +298,5 @@ export interface StrategyExecutionResult {
   orders: OrderExecution[]
   nextRunAt?: number
   skipReason?: string // Human-readable reason why execution was skipped (e.g., spread exceeded)
+  stopLossTriggered?: boolean // True if stop loss fired this cycle
 }

@@ -30,8 +30,13 @@ interface StrategyConfigProps {
 }
 
 // Tooltip component for form field hints
-function Tooltip({ text, position = 'center' }: { text: string; position?: 'left' | 'center' | 'right' }) {
-  const positionClass = position === 'left' ? 'tooltip-left' : position === 'right' ? 'tooltip-right' : ''
+function Tooltip({ text, position = 'center' }: { text: string; position?: 'left' | 'center' | 'right' | 'top' | 'top-left' | 'top-right' }) {
+  const positionClass = position === 'left' ? 'tooltip-left'
+    : position === 'right' ? 'tooltip-right'
+    : position === 'top' ? 'tooltip-top'
+    : position === 'top-left' ? 'tooltip-top tooltip-left'
+    : position === 'top-right' ? 'tooltip-top tooltip-right'
+    : ''
   return (
     <span className={`tooltip-wrapper ${positionClass}`}>
       <span className="tooltip-icon">?</span>
@@ -127,9 +132,11 @@ const TOOLTIPS = {
   // Profit & Risk
   onlySellAboveBuyPrice: "When enabled, only places sell orders above your last buy price + take profit %. Prevents selling at a loss.",
   takeProfitPercent: "Minimum profit margin above buy price required for sell orders. 0.02% covers round-trip fees (0.01% buy + 0.01% sell).",
-  stopLoss: "Emergency exit if price drops below your average buy price by this percentage. Cancels all orders and market sells entire position.",
-  orderTimeout: "Cancel unfilled orders after this many minutes. Useful for limit orders that don't get filled.",
+  resetCycleOnSellTimeout: "When a sell order times out, forget the previous buy price and start a fresh buy-sell cycle. Prevents the bot from being stuck trying to sell above a stale buy price when the market has moved down. Requires Order Timeout and Sell Above Buy to be enabled.",
+  orderTimeout: "Cancel unfilled orders after the configured time. Useful for limit orders that don't get filled.",
   maxSessionLoss: "Pause trading for the session if realized losses exceed this USD amount. End session to reset.",
+  stopLoss: "Emergency exit if price drops below your average buy price by this percentage. Cancels all orders and market sells entire position.",
+  autoResetAfterStopLoss: "Automatically clear buy price and continue trading after stop loss triggers. If off, the bot pauses until you manually reset.",
 }
 
 // Format price mode for display
@@ -220,6 +227,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
   const [showImportModal, setShowImportModal] = useState(false)
   const [importMarket, setImportMarket] = useState<string>('')
   const [importJson, setImportJson] = useState<string>('')
+  const [stopLossPausedMarkets, setStopLossPausedMarkets] = useState<Set<string>>(new Set())
   const [currentPreset, setCurrentPreset] = useState<StrategyPreset>('simple')
   const [showCancelOrdersConfirm, setShowCancelOrdersConfirm] = useState(false)
   const [pendingAction, setPendingAction] = useState<{ type: 'save' | 'deactivate'; config?: StrategyConfigStore } | null>(null)
@@ -229,6 +237,14 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
 
   useEffect(() => {
     loadConfigs()
+  }, [])
+
+  // Subscribe to stop loss pause state changes from trading engine
+  useEffect(() => {
+    const unsubscribe = tradingEngine.onStopLossPauseChange((pausedMarkets) => {
+      setStopLossPausedMarkets(new Set(pausedMarkets))
+    })
+    return unsubscribe
   }, [])
 
   // Expose handleCreateNew via ref for external triggering
@@ -911,7 +927,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                             Stop Loss{config.config.riskManagement?.stopLossEnabled ? ` ${(config.config.riskManagement?.stopLossPercent || 5).toFixed(1)}%` : ''}
                           </span>
                           <span className={config.config.riskManagement?.orderTimeoutEnabled ? 'risk-on' : 'risk-off'}>
-                            Timeout{config.config.riskManagement?.orderTimeoutEnabled ? ` ${config.config.riskManagement?.orderTimeoutMinutes}m` : ''}
+                            Timeout{config.config.riskManagement?.orderTimeoutEnabled ? ` ${config.config.riskManagement?.orderTimeoutMinutes}${(config.config.riskManagement?.orderTimeoutUnit ?? 'minutes') === 'seconds' ? 's' : 'm'}` : ''}
                           </span>
                           <span className={config.config.riskManagement?.maxSessionLossEnabled ? 'risk-on' : 'risk-off'}>
                             Session Limit{config.config.riskManagement?.maxSessionLossEnabled ? ` $${config.config.riskManagement?.maxSessionLossUsd}` : ''}
@@ -921,6 +937,18 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                     )}
                   </div>
                   
+                  {tradingEngine.isActive() && stopLossPausedMarkets.has(config.marketId) && (
+                    <div className="stop-loss-paused-banner">
+                      <span>{t('strategy.stop_loss_paused_banner', 'Paused after stop loss')}</span>
+                      <button
+                        type="button"
+                        className="btn-action btn-activate"
+                        onClick={() => tradingEngine.resetAndResumeAfterStopLoss(config.marketId)}
+                      >
+                        {t('strategy.reset_and_resume', 'Reset & Resume')}
+                      </button>
+                    </div>
+                  )}
                   <div className="config-card-actions">
                     <button type="button" onClick={() => handleEdit(config)} className="btn-action btn-edit">
                       {t('strategy.edit')}
@@ -1374,8 +1402,50 @@ function StrategyConfigForm({
 
       <div className="form-row checkboxes">
         <label className="checkbox-inline">
+          <input type="checkbox" checked={config.riskManagement?.orderTimeoutEnabled ?? false} onChange={(e) => updateRiskManagement({ orderTimeoutEnabled: e.target.checked })} />
+          <span className="label-with-tooltip">{t('strategy.order_timeout')} <Tooltip text={TOOLTIPS.orderTimeout} position="top" /></span>
+        </label>
+        {config.riskManagement?.orderTimeoutEnabled && (
+          <div className="form-field compact">
+            <NumberInput
+              value={config.riskManagement?.orderTimeoutMinutes ?? 15}
+              onChange={(value) => updateRiskManagement({ orderTimeoutMinutes: value })}
+              min={(config.riskManagement?.orderTimeoutUnit ?? 'minutes') === 'seconds' ? 10 : 1}
+              max={(config.riskManagement?.orderTimeoutUnit ?? 'minutes') === 'seconds' ? 3600 : 1440}
+              step={1}
+              isInteger
+            />
+            <div className="btn-group">
+              <button type="button" className={`btn-toggle ${(config.riskManagement?.orderTimeoutUnit ?? 'minutes') === 'minutes' ? 'active' : ''}`} onClick={() => updateRiskManagement({ orderTimeoutUnit: 'minutes' })}>{t('strategy.min')}</button>
+              <button type="button" className={`btn-toggle ${config.riskManagement?.orderTimeoutUnit === 'seconds' ? 'active' : ''}`} onClick={() => updateRiskManagement({ orderTimeoutUnit: 'seconds' })}>{t('strategy.sec', 'sec')}</button>
+            </div>
+          </div>
+        )}
+        <label className="checkbox-inline">
+          <input type="checkbox" checked={config.riskManagement?.resetCycleOnSellTimeout ?? false} onChange={(e) => updateRiskManagement({ resetCycleOnSellTimeout: e.target.checked })} disabled={!config.riskManagement?.orderTimeoutEnabled || !config.orderManagement.onlySellAboveBuyPrice} />
+          <span className="label-with-tooltip">{t('strategy.reset_cycle_on_sell_timeout', 'Reset cycle on sell timeout')} <Tooltip text={TOOLTIPS.resetCycleOnSellTimeout} position="top-right" /></span>
+        </label>
+      </div>
+
+      <div className="form-row checkboxes">
+        <label className="checkbox-inline">
+          <input type="checkbox" checked={config.riskManagement?.maxSessionLossEnabled ?? false} onChange={(e) => updateRiskManagement({ maxSessionLossEnabled: e.target.checked })} />
+          <span className="label-with-tooltip">{t('strategy.max_session_loss')} <Tooltip text={TOOLTIPS.maxSessionLoss} position="top-left" /></span>
+        </label>
+        {config.riskManagement?.maxSessionLossEnabled && (
+          <div className="form-field compact">
+            <span className="prefix">$</span>
+            <NumberInput
+              value={config.riskManagement?.maxSessionLossUsd ?? 100}
+              onChange={(value) => updateRiskManagement({ maxSessionLossUsd: value })}
+              min={0}
+              step={1}
+            />
+          </div>
+        )}
+        <label className="checkbox-inline">
           <input type="checkbox" checked={config.riskManagement?.stopLossEnabled ?? false} onChange={(e) => updateRiskManagement({ stopLossEnabled: e.target.checked })} />
-          <span className="label-with-tooltip">{t('strategy.stop_loss')} <Tooltip text={TOOLTIPS.stopLoss} position="left" /></span>
+          <span className="label-with-tooltip">{t('strategy.stop_loss')} <Tooltip text={TOOLTIPS.stopLoss} position="top" /></span>
         </label>
         {config.riskManagement?.stopLossEnabled && (
           <div className="form-field compact">
@@ -1389,40 +1459,11 @@ function StrategyConfigForm({
             <span className="suffix">%</span>
           </div>
         )}
-        <label className="checkbox-inline">
-          <input type="checkbox" checked={config.riskManagement?.orderTimeoutEnabled ?? false} onChange={(e) => updateRiskManagement({ orderTimeoutEnabled: e.target.checked })} />
-          <span className="label-with-tooltip">{t('strategy.order_timeout')} <Tooltip text={TOOLTIPS.orderTimeout} /></span>
-        </label>
-        {config.riskManagement?.orderTimeoutEnabled && (
-          <div className="form-field compact">
-            <NumberInput
-              value={config.riskManagement?.orderTimeoutMinutes ?? 30}
-              onChange={(value) => updateRiskManagement({ orderTimeoutMinutes: value })}
-              min={1}
-              max={1440}
-              step={1}
-              isInteger
-            />
-            <span className="suffix">{t('strategy.min')}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="form-row checkboxes">
-        <label className="checkbox-inline">
-          <input type="checkbox" checked={config.riskManagement?.maxSessionLossEnabled ?? false} onChange={(e) => updateRiskManagement({ maxSessionLossEnabled: e.target.checked })} />
-          <span className="label-with-tooltip">{t('strategy.max_session_loss')} <Tooltip text={TOOLTIPS.maxSessionLoss} position="left" /></span>
-        </label>
-        {config.riskManagement?.maxSessionLossEnabled && (
-          <div className="form-field compact">
-            <span className="prefix">$</span>
-            <NumberInput
-              value={config.riskManagement?.maxSessionLossUsd ?? 100}
-              onChange={(value) => updateRiskManagement({ maxSessionLossUsd: value })}
-              min={0}
-              step={1}
-            />
-          </div>
+        {config.riskManagement?.stopLossEnabled && (
+          <label className="checkbox-inline">
+            <input type="checkbox" checked={config.riskManagement?.autoResetAfterStopLoss ?? false} onChange={(e) => updateRiskManagement({ autoResetAfterStopLoss: e.target.checked })} />
+            <span className="label-with-tooltip">{t('strategy.auto_reset_after_stop_loss', 'Auto-reset')} <Tooltip text={TOOLTIPS.autoResetAfterStopLoss} position="top-right" /></span>
+          </label>
         )}
       </div>
 

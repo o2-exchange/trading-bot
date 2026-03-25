@@ -224,11 +224,22 @@ class OrderFulfillmentService {
         timestamp: Date.now(),
       }
 
+      // Cap fill history at 50 entries per side to prevent unbounded growth.
+      // Only averageBuyPrice/averageSellPrice (last fill) is used for trading logic;
+      // the array is kept for potential weighted average calculations.
+      const MAX_FILL_HISTORY = 50
+
       if (order.side === 'Buy') {
+        if (updatedConfig.lastFillPrices.buy.length >= MAX_FILL_HISTORY) {
+          updatedConfig.lastFillPrices.buy.shift()
+        }
         updatedConfig.lastFillPrices.buy.push(fillEntry)
         // Use the LAST buy fill price (not average) for profit protection
         updatedConfig.averageBuyPrice = fillPriceHuman
       } else {
+        if (updatedConfig.lastFillPrices.sell.length >= MAX_FILL_HISTORY) {
+          updatedConfig.lastFillPrices.sell.shift()
+        }
         updatedConfig.lastFillPrices.sell.push(fillEntry)
         updatedConfig.averageSellPrice = fillPriceHuman
       }
