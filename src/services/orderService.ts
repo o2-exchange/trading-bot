@@ -63,8 +63,11 @@ class OrderService {
     // Normalize address
     const normalizedAddress = ownerAddress.toLowerCase()
 
-    // Get active session
-    const session = await sessionService.getActiveSession(normalizedAddress)
+    // Get active session — skip on-chain validation during trading (matching fuel-o2).
+    // Session was validated at startup; during active trading, trust the local cache.
+    // If the session is actually revoked, the O2 API will return a 400 error which
+    // triggers the retry logic in placeOrder().
+    const session = await sessionService.getActiveSession(normalizedAddress, true)
     if (!session) {
       throw new Error('No active session found. Please create a session first.')
     }
@@ -219,7 +222,8 @@ class OrderService {
     // Normalize address
     const normalizedAddress = ownerAddress.toLowerCase()
 
-    const session = await sessionService.getActiveSession(normalizedAddress)
+    // Skip on-chain validation during trading (matching fuel-o2)
+    const session = await sessionService.getActiveSession(normalizedAddress, true)
     if (!session) {
       throw new Error('No active session found')
     }
@@ -323,7 +327,7 @@ class OrderService {
 
   async getOpenOrders(marketId: string, ownerAddress: string): Promise<Order[]> {
     const normalizedAddress = ownerAddress.toLowerCase()
-    const session = await sessionService.getActiveSession(normalizedAddress)
+    const session = await sessionService.getActiveSession(normalizedAddress, true)
     if (!session) {
       return []
     }
@@ -378,7 +382,7 @@ class OrderService {
 
   async getAllOpenOrders(ownerAddress: string): Promise<Order[]> {
     const normalizedAddress = ownerAddress.toLowerCase()
-    const session = await sessionService.getActiveSession(normalizedAddress)
+    const session = await sessionService.getActiveSession(normalizedAddress, true)
     if (!session) {
       return []
     }

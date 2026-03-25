@@ -423,12 +423,15 @@ class SessionService {
           }
 
           if (!isValidOnChain) {
-            console.log('[SessionService] ❌ Session invalid on-chain - clearing session for this account')
+            console.log('[SessionService] ❌ Session invalid on-chain - clearing Zustand cache for this account')
             // Session was revoked (e.g., user signed in another app)
-            // Only clear the specific account's session, not ALL sessions
+            // Only clear the specific account's session from Zustand, not ALL sessions
             useSessionStore.getState().clearSessionForAccount(tradingAccountId as `0x${string}`)
-            // Also mark as inactive in DB
-            await this.deactivateSession(sessionId)
+            // DO NOT deactivate in IndexedDB — keep isActive=true so that
+            // sessionService.getActiveSession() can still recover it from IndexedDB
+            // if the on-chain check was a false negative (stale RPC, transient issue).
+            // If the session is truly revoked, the auth flow will create a new one
+            // and the old IndexedDB record will be superseded.
             // Cache invalid result
             this.validationCache.set(normalizedAccountId, { isValid: false, timestamp: Date.now() })
             return false

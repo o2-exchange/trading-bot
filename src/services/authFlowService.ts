@@ -226,20 +226,15 @@ class AuthFlowService {
         return null
       }
 
-      // Get session from cache
-      const cachedSession = useSessionStore.getState().getSession(tradingAccount.id as `0x${string}`)
-      if (!cachedSession) {
-        console.log('[AuthFlow] No cached session found')
-        return null
-      }
-
-      // Check expiry LOCALLY first (like fuel-o2 does)
-      // This avoids unnecessary on-chain calls for expired sessions
-      const expiry = BigInt(cachedSession.expiry.unix.toString())
-      const now = BigInt(Math.floor(Date.now() / 1000))
-      if (expiry < now) {
-        console.log('[AuthFlow] Session expired locally, clearing')
-        useSessionStore.getState().clearSessionForAccount(tradingAccount.id as `0x${string}`)
+      // Use sessionService.getActiveSession which checks BOTH Zustand AND IndexedDB.
+      // Previously we only checked Zustand here, which meant if Zustand was empty
+      // (e.g., localStorage cleared, prior validation failure), we'd miss sessions
+      // that are still valid in IndexedDB and unnecessarily create a new one —
+      // which revokes the old one on-chain, killing any running trading engine.
+      // Skip validation first to just find the session.
+      const session = await sessionService.getActiveSession(ownerAddress, true)
+      if (!session) {
+        console.log('[AuthFlow] No active session found in cache or IndexedDB')
         return null
       }
 
@@ -249,13 +244,13 @@ class AuthFlowService {
         return null
       }
 
-      // Session looks valid locally, try on-chain validation
-      console.log('[AuthFlow] Validating cached session on-chain...')
+      // Session found — validate on-chain at startup to ensure it's still valid
+      console.log('[AuthFlow] Validating session on-chain...')
       try {
         const isValid = await sessionService.validateSession(
           tradingAccount.id,
           ownerAddress,
-          false // DO NOT skip on-chain validation
+          false // DO NOT skip on-chain validation at startup
         )
 
         // Check for abort after on-chain validation
@@ -266,7 +261,6 @@ class AuthFlowService {
 
         if (!isValid) {
           console.log('[AuthFlow] ❌ Session invalid on-chain - clearing session for this account')
-          // Only clear the specific account's session, not ALL sessions
           useSessionStore.getState().clearSessionForAccount(tradingAccount.id as `0x${string}`)
           return null
         }
@@ -285,10 +279,7 @@ class AuthFlowService {
       }
 
       console.log('[AuthFlow] ✅ Session valid')
-
-      // Get full session from database (skip validation to avoid recursion)
-      const session = await sessionService.getActiveSession(ownerAddress, true)
-      return session ? { id: session.id } : null
+      return { id: session.id }
     } catch (error) {
       console.error('[AuthFlow] Error checking active session:', error)
       // DON'T clear sessions on general errors - might be network issue

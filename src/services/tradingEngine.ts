@@ -1341,8 +1341,10 @@ class TradingEngine {
         const errorPair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
         this.emitStatus(i18next.t('trading_console.error_in_strategy', { pair: errorPair, error: error.message }), 'error')
 
-        // Detect session loss: if we keep getting "No active session" errors, stop gracefully
-        // instead of looping forever in a useless retry cycle
+        // Detect session loss: if we keep getting "No active session" errors,
+        // use long backoff instead of hard-stopping. The session might recover
+        // (e.g., auth flow re-creates it, or IndexedDB recovery kicks in).
+        // Hard-stopping requires manual user intervention which is worse than waiting.
         const isSessionError = error.message?.includes('No active session') ||
           error.message?.includes('Session key not found') ||
           error.message?.includes('Password not set for session')
@@ -1352,26 +1354,35 @@ class TradingEngine {
           console.warn(`[TradingEngine] Session error #${this.consecutiveSessionErrors}/${TradingEngine.MAX_SESSION_ERRORS}`)
 
           if (this.consecutiveSessionErrors >= TradingEngine.MAX_SESSION_ERRORS) {
-            console.error(`[TradingEngine] Session lost after ${this.consecutiveSessionErrors} consecutive errors. Auto-stopping to prevent infinite retry loop.`)
+            // Instead of hard-stopping, emit a warning and use max backoff.
+            // The session may be recoverable (IndexedDB fallback, auth flow re-creation).
+            // Only a genuine session expiry (30 days) should require user action.
+            console.error(`[TradingEngine] Session appears lost after ${this.consecutiveSessionErrors} consecutive errors. Using max backoff — will keep retrying.`)
             this.emitStatus(
-              'Trading stopped: session expired or was revoked. Please reconnect your wallet and create a new session.',
+              'Session error: could not find active session. Retrying with extended delay... If this persists, please reconnect your wallet.',
               'error'
             )
-            this.stop()
-            return // Exit early — don't schedule next market
+            // Use 5-minute backoff — skip the normal exponential backoff below.
+            marketConfig.nextRunAt = Date.now() + 300000
+          } else {
+            // Session error but under threshold — use normal exponential backoff
+            this.consecutiveErrors++
+            const backoffDelay = Math.min(10000 * Math.pow(2, this.consecutiveErrors - 1), 300000)
+            console.warn(`[TradingEngine] Consecutive error #${this.consecutiveErrors}, backing off ${Math.round(backoffDelay / 1000)}s`)
+            marketConfig.nextRunAt = Date.now() + backoffDelay
           }
         } else {
           // Reset counter on non-session errors (transient issues like network blips)
           this.consecutiveSessionErrors = 0
-        }
 
-        // Exponential backoff: 10s → 20s → 40s → 80s → 160s → 300s (cap at 5 min)
-        // Prevents hammering failing endpoints during outages, which can cause
-        // rate-limiting cascades that indirectly affect session validation
-        this.consecutiveErrors++
-        const backoffDelay = Math.min(10000 * Math.pow(2, this.consecutiveErrors - 1), 300000)
-        console.warn(`[TradingEngine] Consecutive error #${this.consecutiveErrors}, backing off ${Math.round(backoffDelay / 1000)}s`)
-        marketConfig.nextRunAt = Date.now() + backoffDelay
+          // Exponential backoff: 10s → 20s → 40s → 80s → 160s → 300s (cap at 5 min)
+          // Prevents hammering failing endpoints during outages, which can cause
+          // rate-limiting cascades that indirectly affect session validation
+          this.consecutiveErrors++
+          const backoffDelay = Math.min(10000 * Math.pow(2, this.consecutiveErrors - 1), 300000)
+          console.warn(`[TradingEngine] Consecutive error #${this.consecutiveErrors}, backing off ${Math.round(backoffDelay / 1000)}s`)
+          marketConfig.nextRunAt = Date.now() + backoffDelay
+        }
     } finally {
       this.isProcessingMarket = false
 
