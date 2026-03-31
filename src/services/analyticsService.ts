@@ -141,7 +141,7 @@ class AnalyticsService {
     walletAddress: string,
     marketPair: string,
     side: 'Buy' | 'Sell',
-    orderType: 'Market' | 'Limit',
+    orderType: 'Market' | 'Limit' | 'PostOnly',
     priceUsd: number,
     quantity: number,
     valueUsd: number

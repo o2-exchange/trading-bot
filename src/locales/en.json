@@ -602,6 +602,14 @@
   "release_notes": {
     "title": "Release Notes",
     "auto_update_note": "The app updates automatically when you refresh the page. No action needed to stay up-to-date.",
+    "mar_31": {
+      "postonly_title": "Post Only Orders",
+      "postonly_desc": "New Post Only order type guarantees your orders always rest on the book as maker. If an order would match immediately, it is rejected and retried next cycle. Perfect for traders who want maker fees only.",
+      "pricing_title": "Smarter Sell Pricing",
+      "pricing_desc": "Sell orders now round up to the nearest tick instead of down, keeping them at or above the best ask. This prevents limit sell orders from accidentally crossing the spread and filling as taker on tight-spread pairs.",
+      "autosell_title": "Auto-Sell Post Only Option",
+      "autosell_desc": "When using Post Only with Sell Above Buy, you can now choose whether the immediate sell after a buy fill should also use Post Only (maker only) or Limit (guaranteed placement). Checked by default for full maker control."
+    },
     "mar_25": {
       "session_title": "Bot Stays Connected",
       "session_desc": "Your bot will no longer disconnect unexpectedly during trading. Sessions are now resilient to temporary network issues and wallet interruptions, so you won't lose your session mid-trade.",

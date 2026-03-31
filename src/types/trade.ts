@@ -5,7 +5,7 @@ export interface Trade {
   orderId: string
   sessionId?: string
   side: 'Buy' | 'Sell'
-  orderType?: 'Limit' | 'Market' // Order type (Limit or Market)
+  orderType?: 'Limit' | 'Market' | 'PostOnly'
   price: string // Limit price (for backward compatibility)
   priceFill?: string // Actual execution price (price_fill from order)
   quantity: string

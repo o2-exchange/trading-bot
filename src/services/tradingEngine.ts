@@ -1176,7 +1176,7 @@ class TradingEngine {
                 marketId: marketConfig.market.market_id,
                 orderId: orderExec.orderId,
                 side: orderExec.side,
-                orderType: orderExec.isLimitOrder ? 'Limit' : 'Market',
+                orderType: orderExec.isPostOnlyOrder ? 'PostOnly' : orderExec.isLimitOrder ? 'Limit' : 'Market',
                 price: orderExec.price || '0',
                 priceFill: priceFill,
                 quantity: orderExec.quantity || '0',
@@ -1192,9 +1192,11 @@ class TradingEngine {
               const amount = orderExec.quantityHuman || 'N/A'
               const asset = marketConfig.market.base.symbol
               const orderPrice = orderExec.priceHuman || 'N/A'
-              const orderType = orderExec.isLimitOrder
-                ? i18next.t('trading_console.order_type_limit')
-                : i18next.t('trading_console.order_type_market')
+              const orderType = orderExec.isPostOnlyOrder
+                ? i18next.t('trading_console.order_type_postonly', 'POSTONLY')
+                : orderExec.isLimitOrder
+                  ? i18next.t('trading_console.order_type_limit')
+                  : i18next.t('trading_console.order_type_market')
               const translatedSide = orderExec.side === 'Buy'
                 ? i18next.t('trading_console.side_buy')
                 : i18next.t('trading_console.side_sell')
@@ -1220,7 +1222,7 @@ class TradingEngine {
                 this.ownerAddress!,
                 pair,
                 orderExec.side as 'Buy' | 'Sell',
-                orderExec.isLimitOrder ? 'Limit' : 'Market',
+                orderExec.isPostOnlyOrder ? 'PostOnly' : orderExec.isLimitOrder ? 'Limit' : 'Market',
                 priceUsd,
                 quantityBase,
                 priceUsd * quantityBase

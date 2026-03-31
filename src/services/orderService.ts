@@ -27,6 +27,15 @@ class OrderService {
       // On 400 error (InvalidSignature / nonce desync / session conflict), retry once with fresh state
       if (error?.response?.status === 400) {
         const errorCode = error?.response?.data?.error_code || error?.response?.data?.code
+        const reason = error?.response?.data?.reason || error?.message || ''
+
+        // PostOnly rejection: order would match immediately — don't retry, this is expected
+        if (reason.includes('PostOnly') || reason.includes('WouldMatch') || reason.includes('post_only') || errorCode === 'PostOnlyWouldMatch') {
+          const postOnlyError = new Error('PostOnly order rejected: would match immediately')
+          ;(postOnlyError as any).isPostOnlyRejection = true
+          throw postOnlyError
+        }
+
         console.warn(`[OrderService] 400 error (code: ${errorCode}), attempting recovery and retry...`)
 
         const normalizedAddress = ownerAddress.toLowerCase()

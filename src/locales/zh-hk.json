@@ -515,6 +515,14 @@
   "release_notes": {
     "title": "更新日誌",
     "auto_update_note": "重新整理頁面時應用程式會自動更新。無需任何操作即可保持最新版本。",
+    "mar_31": {
+      "postonly_title": "Post Only 訂單",
+      "postonly_desc": "新的 Post Only 訂單類型保證您的訂單始終作為掛單方掛在訂單簿上。如果訂單會立即成交，將被拒絕並在下一個週期重試。適合只想支付掛單方手續費的交易者。",
+      "pricing_title": "更精確的賣出定價",
+      "pricing_desc": "賣單現在會向上取整到最近的價格檔位，保持在最優賣價或以上。這可以防止在窄價差交易對上限價賣單意外穿越價差並以吃單方身份成交。",
+      "autosell_title": "自動賣出 Post Only 選項",
+      "autosell_desc": "使用 Post Only 和高於買價賣出時，您可以選擇買入成交後的立即賣出是否也使用 Post Only（僅掛單方）或 Limit（保證下單）。預設勾選以實現完全的掛單方控制。"
+    },
     "mar_25": {
       "session_title": "機器人保持連接",
       "session_desc": "交易過程中機器人不再意外斷開連接。會話現在能夠抵禦臨時網絡問題和錢包中斷，不會在交易中丟失會話。",

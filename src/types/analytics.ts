@@ -44,7 +44,7 @@ export interface OrderPlacedEvent extends BaseEventProperties {
   order_id: string
   market_pair: string
   side: 'Buy' | 'Sell'
-  order_type: 'Market' | 'Limit'
+  order_type: 'Market' | 'Limit' | 'PostOnly'
   price_usd: number
   quantity: number
   value_usd: number

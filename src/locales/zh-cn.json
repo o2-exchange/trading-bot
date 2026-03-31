@@ -515,6 +515,14 @@
   "release_notes": {
     "title": "更新日志",
     "auto_update_note": "刷新页面时应用会自动更新。无需任何操作即可保持最新版本。",
+    "mar_31": {
+      "postonly_title": "Post Only 订单",
+      "postonly_desc": "新的 Post Only 订单类型保证您的订单始终作为挂单方挂在订单簿上。如果订单会立即成交，将被拒绝并在下一个周期重试。适合只想支付挂单方手续费的交易者。",
+      "pricing_title": "更精确的卖出定价",
+      "pricing_desc": "卖单现在会向上取整到最近的价格档位，保持在最优卖价或以上。这可以防止在窄价差交易对上限价卖单意外穿越价差并以吃单方身份成交。",
+      "autosell_title": "自动卖出 Post Only 选项",
+      "autosell_desc": "使用 Post Only 和高于买价卖出时，您可以选择买入成交后的立即卖出是否也使用 Post Only（仅挂单方）或 Limit（保证下单）。默认勾选以实现完全的挂单方控制。"
+    },
     "mar_25": {
       "session_title": "机器人保持连接",
       "session_desc": "交易过程中机器人不再意外断开连接。会话现在能够抵御临时网络问题和钱包中断，不会在交易中丢失会话。",

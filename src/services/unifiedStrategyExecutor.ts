@@ -8,6 +8,7 @@ import { balanceService } from './balanceService'
 import { orderFulfillmentService } from './orderFulfillmentService'
 import { db } from './dbService'
 import { validateOrderParams } from '../utils/orderValidation'
+import { scaleUpAndTruncateToInt } from '../utils/priceScaling'
 
 /**
  * Extract price from an orderbook level entry.
@@ -48,50 +49,6 @@ function roundDownToMarketPrecision(quantity: Decimal, market: Market): Decimal 
 function roundDownTo3Decimals(quantity: Decimal): Decimal {
   const multiplier = new Decimal(1000)
   return quantity.mul(multiplier).floor().div(multiplier)
-}
-
-/**
- * Scales up a Decimal by a given number of decimals and truncates it
- * according to the maximum precision or tick size.
- *
- * If tickSize is provided, the price will be aligned to the tick size.
- * Otherwise, truncation is based on max_precision.
- *
- * @param amount - Price in human-readable format
- * @param decimals - Number of decimals for the quote asset
- * @param maxPrecision - Maximum precision allowed (usually less than decimals)
- * @param tickSize - Optional tick size string from market config (in human-readable format)
- * @returns Scaled and truncated price as integer
- */
-function scaleUpAndTruncateToInt(
-  amount: Decimal,
-  decimals: number,
-  maxPrecision: number,
-  tickSize?: string
-): Decimal {
-  // If tick_size is available, use it for alignment (more precise than max_precision)
-  if (tickSize) {
-    const tickSizeDecimal = new Decimal(tickSize)
-    if (!tickSizeDecimal.isZero()) {
-      // Align price to tick size first (in human format)
-      const tickAlignedPrice = amount.div(tickSizeDecimal).floor().mul(tickSizeDecimal)
-      // Then scale to raw integer
-      return tickAlignedPrice.mul(new Decimal(10).pow(decimals)).floor()
-    }
-  }
-
-  // Fallback to max_precision-based truncation
-  // Ensure maxPrecision has a valid value (default to decimals if undefined)
-  const effectivePrecision = maxPrecision !== undefined && maxPrecision >= 0 ? maxPrecision : decimals
-  const priceInt = amount.mul(new Decimal(10).pow(decimals))
-  const truncateFactor = new Decimal(10).pow(decimals - effectivePrecision)
-
-  // If truncateFactor is less than or equal to 1, no truncation needed
-  if (truncateFactor.lte(1)) {
-    return priceInt.floor()
-  }
-
-  return priceInt.div(truncateFactor).floor().mul(truncateFactor)
 }
 
 /**
@@ -746,8 +703,8 @@ class UnifiedStrategyExecutor {
     if (capAskPrice) {
       const bestAskPrice = new Decimal(capAskPrice).div(10 ** market.quote.decimals)
       if (buyPriceHuman.gt(bestAskPrice)) {
-        if (config.orderConfig.orderType === 'Spot') {
-          // For limit orders, cap buy price to best ask to avoid immediate market execution
+        if (config.orderConfig.orderType === 'Spot' || config.orderConfig.orderType === 'PostOnly') {
+          // For limit/PostOnly orders, cap buy price to best ask to avoid crossing the spread
           console.warn('[UnifiedStrategyExecutor] Capping buy price to best ask for limit order:', {
             originalBuyPrice: buyPriceHuman.toString(),
             bestAskPrice: bestAskPrice.toString()
@@ -763,8 +720,8 @@ class UnifiedStrategyExecutor {
       }
     }
     
-    // Calculate order size (apply slippage buffer for market orders)
-    const isMarketOrder = config.orderConfig.orderType !== 'Spot'
+    // Calculate order size (apply slippage buffer for market orders only)
+    const isMarketOrder = config.orderConfig.orderType === 'Market'
     const orderSize = this.calculateOrderSize(market, config.positionSizing, balances, 'buy', buyPriceHuman, ticker, isMarketOrder)
     if (!orderSize || orderSize.quantity.eq(0)) {
       console.log('[UnifiedStrategyExecutor] Buy order skipped: insufficient balance or below minimum')
@@ -820,10 +777,11 @@ class UnifiedStrategyExecutor {
     }
 
     try {
-      // Direct mapping: UI only shows Market and Spot
-      const orderType: OrderType = config.orderConfig.orderType === 'Spot' 
-        ? OrderType.Spot 
-        : OrderType.Market
+      const orderType: OrderType = config.orderConfig.orderType === 'PostOnly'
+        ? OrderType.PostOnly
+        : config.orderConfig.orderType === 'Spot'
+          ? OrderType.Spot
+          : OrderType.Market
       const order = await orderService.placeOrder(
         market,
         OrderSide.Buy,
@@ -844,7 +802,8 @@ class UnifiedStrategyExecutor {
         }
       }
       
-      const isLimitOrder = config.orderConfig.orderType === 'Spot'
+      const isLimitOrder = config.orderConfig.orderType !== 'Market'
+      const isPostOnlyOrder = config.orderConfig.orderType === 'PostOnly'
       // Use market precision for quantity display (max 8 decimals)
       const quantityPrecision = Math.min(market.base.decimals, 8)
       return {
@@ -857,8 +816,14 @@ class UnifiedStrategyExecutor {
         quantityHuman: quantityRounded.toFixed(quantityPrecision).replace(/\.?0+$/, ''),
         marketPair,
         isLimitOrder,
+        isPostOnlyOrder,
       }
     } catch (error: any) {
+      // PostOnly rejection is not a real error — order would cross spread, retry next cycle
+      if (error.isPostOnlyRejection) {
+        console.log(`[UnifiedStrategyExecutor] PostOnly buy order rejected (would match), will retry next cycle`)
+        return null
+      }
       console.error('[UnifiedStrategyExecutor] Buy order failed:', error)
       const marketPair = `${market.base.symbol}/${market.quote.symbol}`
       return {
@@ -965,7 +930,7 @@ class UnifiedStrategyExecutor {
 
     // Calculate order size using adjusted sell price
     // Don't apply slippage buffer if we're forcing a limit order
-    const isSellMarketOrder = !forceLimitOrder && config.orderConfig.orderType !== 'Spot'
+    const isSellMarketOrder = !forceLimitOrder && config.orderConfig.orderType === 'Market'
     const orderSize = this.calculateOrderSize(market, config.positionSizing, balances, 'sell', adjustedSellPrice, ticker, isSellMarketOrder)
     if (!orderSize || orderSize.quantity.eq(0)) {
       console.log('[UnifiedStrategyExecutor] Sell order skipped: insufficient balance or below minimum')
@@ -973,11 +938,13 @@ class UnifiedStrategyExecutor {
     }
 
     // Truncate price according to tick_size (or max_precision as fallback)
+    // Round UP for sell orders to stay at or above the best ask (maker, not taker)
     const sellPriceTruncated = scaleUpAndTruncateToInt(
       adjustedSellPrice,
       market.quote.decimals,
       market.quote.max_precision,
-      market.tick_size
+      market.tick_size,
+      true // roundUp: sell orders should ceil to avoid crossing the spread
     )
     const sellPriceScaled = sellPriceTruncated.toFixed(0)
 
@@ -1029,7 +996,11 @@ class UnifiedStrategyExecutor {
       // otherwise use the configured order type
       const orderType: OrderType = forceLimitOrder
         ? OrderType.Spot
-        : (config.orderConfig.orderType === 'Spot' ? OrderType.Spot : OrderType.Market)
+        : config.orderConfig.orderType === 'PostOnly'
+          ? OrderType.PostOnly
+          : config.orderConfig.orderType === 'Spot'
+            ? OrderType.Spot
+            : OrderType.Market
       const order = await orderService.placeOrder(
         market,
         OrderSide.Sell,
@@ -1055,8 +1026,8 @@ class UnifiedStrategyExecutor {
         }
       }
       
-      // Limit order if forced (profit protection) or config is Spot
-      const isLimitOrder = forceLimitOrder || config.orderConfig.orderType === 'Spot'
+      const isLimitOrder = forceLimitOrder || config.orderConfig.orderType !== 'Market'
+      const isPostOnlyOrder = !forceLimitOrder && config.orderConfig.orderType === 'PostOnly'
       // Use market precision for quantity display (max 8 decimals)
       const quantityPrecision = Math.min(market.base.decimals, 8)
       return {
@@ -1069,8 +1040,14 @@ class UnifiedStrategyExecutor {
         quantityHuman: quantityRounded.toFixed(quantityPrecision).replace(/\.?0+$/, ''),
         marketPair,
         isLimitOrder,
+        isPostOnlyOrder,
       }
     } catch (error: any) {
+      // PostOnly rejection is not a real error — order would cross spread, retry next cycle
+      if (error.isPostOnlyRejection) {
+        console.log(`[UnifiedStrategyExecutor] PostOnly sell order rejected (would match), will retry next cycle`)
+        return null
+      }
       console.error('[UnifiedStrategyExecutor] Sell order failed:', error)
       const marketPair = `${market.base.symbol}/${market.quote.symbol}`
       return {

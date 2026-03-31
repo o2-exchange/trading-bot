@@ -6,6 +6,7 @@ import { orderService } from './orderService'
 import { db } from './dbService'
 import { marketService } from './marketService'
 import { balanceService } from './balanceService'
+import { scaleUpAndTruncateToInt } from '../utils/priceScaling'
 
 interface FillPrice {
   price: string
@@ -19,43 +20,6 @@ interface FillPrice {
 function roundDownTo3Decimals(quantity: Decimal): Decimal {
   const multiplier = new Decimal(1000)
   return quantity.mul(multiplier).floor().div(multiplier)
-}
-
-/**
- * Scales up a Decimal by a given number of decimals and truncates it
- * according to the maximum precision or tick size.
- *
- * @param amount - Price in human-readable format
- * @param decimals - Number of decimals for the quote asset
- * @param maxPrecision - Maximum precision allowed
- * @param tickSize - Optional tick size string from market config (in human-readable format)
- * @returns Scaled and truncated price as integer
- */
-function scaleUpAndTruncateToInt(
-  amount: Decimal,
-  decimals: number,
-  maxPrecision: number,
-  tickSize?: string
-): Decimal {
-  // If tick_size is available, use it for alignment
-  if (tickSize) {
-    const tickSizeDecimal = new Decimal(tickSize)
-    if (!tickSizeDecimal.isZero()) {
-      const tickAlignedPrice = amount.div(tickSizeDecimal).floor().mul(tickSizeDecimal)
-      return tickAlignedPrice.mul(new Decimal(10).pow(decimals)).floor()
-    }
-  }
-
-  // Fallback to max_precision-based truncation
-  const effectivePrecision = maxPrecision !== undefined && maxPrecision >= 0 ? maxPrecision : decimals
-  const priceInt = amount.mul(new Decimal(10).pow(decimals))
-  const truncateFactor = new Decimal(10).pow(decimals - effectivePrecision)
-
-  if (truncateFactor.lte(1)) {
-    return priceInt.floor()
-  }
-
-  return priceInt.div(truncateFactor).floor().mul(truncateFactor)
 }
 
 class OrderFulfillmentService {
@@ -567,11 +531,13 @@ class OrderFulfillmentService {
       const quantityScaled = quantityRounded.mul(10 ** market.base.decimals).toFixed(0)
 
       // Truncate price according to tick_size (or max_precision as fallback)
+      // Round UP for sell orders to stay at or above the best ask (maker, not taker)
       const sellPriceTruncated = scaleUpAndTruncateToInt(
         sellPrice,
         market.quote.decimals,
         market.quote.max_precision,
-        market.tick_size
+        market.tick_size,
+        true // roundUp: sell orders should ceil to avoid crossing the spread
       )
       const sellPriceScaled = sellPriceTruncated.toFixed(0)
 
@@ -585,15 +551,23 @@ class OrderFulfillmentService {
       const placeWithRetry = async (retries = 2, delayMs = 400): Promise<Order> => {
         for (let i = 0; i <= retries; i++) {
           try {
+            // Respect user's auto-sell preference: PostOnly if opted in, otherwise Spot (limit)
+            const usePostOnly = configToUse.orderConfig.orderType === 'PostOnly' && (configToUse.orderManagement.autoSellPostOnly ?? true)
+            const autoSellOrderType = usePostOnly ? OrderType.PostOnly : OrderType.Spot
             return await orderService.placeOrder(
               market,
               OrderSide.Sell,
-              OrderType.Spot, // Always use Spot/Limit for orders that sit on the book
+              autoSellOrderType,
               sellPriceScaled,
               quantityScaled,
               ownerAddress
             )
           } catch (error: any) {
+            // PostOnly rejection: order would cross spread — don't retry, next cycle will handle it
+            if ((error as any).isPostOnlyRejection) {
+              console.log('[OrderFulfillmentService] PostOnly auto-sell rejected (would match), next cycle will retry')
+              return null as any
+            }
             const errorMsg = error?.response?.data?.reason || error?.message || ''
             if (errorMsg.includes('NotEnoughBalance') && i < retries) {
               console.log(`[OrderFulfillmentService] NotEnoughBalance, retry ${i + 1}/${retries} in ${delayMs}ms...`)

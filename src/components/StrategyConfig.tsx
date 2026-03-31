@@ -113,7 +113,7 @@ function NumberInput({ value, onChange, min, max, step = 'any', disabled, placeh
 // Tooltip descriptions for each setting
 const TOOLTIPS = {
   // Order Config
-  orderType: "Market orders execute immediately at best available price. Limit orders are placed on the orderbook and wait for a match at your specified price.",
+  orderType: "Market orders execute immediately at best available price. Limit orders are placed on the orderbook and wait for a match. Post Only orders are guaranteed to rest on the book as maker. They are rejected if they would match immediately, ensuring you always pay maker fees.",
   priceMode: "The reference price used to calculate your order price. Mid = average of best bid/ask. Best Bid/Ask = top of orderbook. Market = last traded price.",
   side: "Buy: Only place buy orders. Sell: Only place sell orders. Both: Place both buy and sell orders each cycle.",
   priceOffsetPercent: "Percentage offset from reference price. Buys are placed below reference (buy cheaper), sells above (sell higher). 0% = exact reference price.",
@@ -131,6 +131,7 @@ const TOOLTIPS = {
 
   // Profit & Risk
   onlySellAboveBuyPrice: "When enabled, only places sell orders above your last buy price + take profit %. Prevents selling at a loss.",
+  autoSellPostOnly: "When checked, the immediate sell order placed after a buy fill uses Post Only (maker only). If unchecked, it uses Limit which guarantees placement but may fill as taker.",
   takeProfitPercent: "Minimum profit margin above buy price required for sell orders. 0.02% covers round-trip fees (0.01% buy + 0.01% sell).",
   resetCycleOnSellTimeout: "When a sell order times out, forget the previous buy price and start a fresh buy-sell cycle. Prevents the bot from being stuck trying to sell above a stale buy price when the market has moved down. Requires Order Timeout and Sell Above Buy to be enabled.",
   orderTimeout: "Cancel unfilled orders after the configured time. Useful for limit orders that don't get filled.",
@@ -898,7 +899,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                         {/* Left: Order & Position settings */}
                         <div className="config-left">
                           <span className="cfg-text">
-                            <span className="cfg-label">Type:</span> {config.config.orderConfig.orderType === 'Spot' ? 'Limit' : 'Market'} ·
+                            <span className="cfg-label">Type:</span> {config.config.orderConfig.orderType === 'PostOnly' ? 'PostOnly' : config.config.orderConfig.orderType === 'Spot' ? 'Limit' : 'Market'} ·
                             <span className="cfg-label">Side:</span> {config.config.orderConfig.side || 'Both'} ·
                             <span className="cfg-label">Mode:</span> {formatPriceMode(config.config.orderConfig.priceMode)}
                           </span>
@@ -1132,7 +1133,7 @@ function StrategyConfigForm({
   }
 
   const updateOrderManagement = (updates: Partial<StrategyConfigType['orderManagement']>) => {
-    // When enabling "Sell Above Buy Price", force order type to Limit (Spot)
+    // When enabling "Sell Above Buy Price", force Market to Limit (Spot/PostOnly are fine)
     if (updates.onlySellAboveBuyPrice === true) {
       updateConfig({
         orderManagement: {
@@ -1141,7 +1142,7 @@ function StrategyConfigForm({
         },
         orderConfig: {
           ...config.orderConfig,
-          orderType: 'Spot', // Force Limit orders when sell above buy is enabled
+          orderType: config.orderConfig.orderType === 'Market' ? 'Spot' : config.orderConfig.orderType,
         },
       })
     } else {
@@ -1221,24 +1222,17 @@ function StrategyConfigForm({
         <div className="form-field">
           <label className="label-with-tooltip">
             {t('strategy.order_type')} <Tooltip text={TOOLTIPS.orderType} position="left" />
-            {config.orderManagement.onlySellAboveBuyPrice && (
-              <span className="field-locked-indicator" title={t('strategy.limit_locked_hint')}>🔒</span>
-            )}
           </label>
           <div className="select-wrapper">
             <select
               value={config.orderConfig.orderType}
               onChange={(e) => updateOrderConfig({ orderType: e.target.value as any })}
-              disabled={config.orderManagement.onlySellAboveBuyPrice}
-              className={config.orderManagement.onlySellAboveBuyPrice ? 'disabled-locked' : ''}
             >
-              <option value="Market">{t('strategy.market_order')}</option>
+              <option value="Market" disabled={config.orderManagement.onlySellAboveBuyPrice}>{t('strategy.market_order')}</option>
               <option value="Spot">{t('strategy.limit_order')}</option>
+              <option value="PostOnly">{t('strategy.post_only_order', 'Post Only')}</option>
             </select>
           </div>
-          {config.orderManagement.onlySellAboveBuyPrice && (
-            <small className="field-hint">{t('strategy.limit_required')}</small>
-          )}
         </div>
         <div className="form-field">
           <label className="label-with-tooltip">{t('strategy.price_mode')} <Tooltip text={TOOLTIPS.priceMode} /></label>
@@ -1388,6 +1382,12 @@ function StrategyConfigForm({
           <input type="checkbox" checked={config.orderManagement.onlySellAboveBuyPrice} onChange={(e) => updateOrderManagement({ onlySellAboveBuyPrice: e.target.checked })} />
           <span className="label-with-tooltip">{t('strategy.sell_above_buy')} <Tooltip text={TOOLTIPS.onlySellAboveBuyPrice} position="left" /></span>
         </label>
+        {config.orderConfig.orderType === 'PostOnly' && (
+          <label className="checkbox-inline">
+            <input type="checkbox" checked={config.orderManagement.autoSellPostOnly ?? true} onChange={(e) => updateOrderManagement({ autoSellPostOnly: e.target.checked })} />
+            <span className="label-with-tooltip">{t('strategy.auto_sell_post_only', 'Auto-sell Post Only')} <Tooltip text={TOOLTIPS.autoSellPostOnly} position="top" /></span>
+          </label>
+        )}
         <div className="form-field compact">
           <label className="label-with-tooltip">{t('strategy.take_profit')} <Tooltip text={TOOLTIPS.takeProfitPercent} /></label>
           <NumberInput
