@@ -152,11 +152,26 @@ const formatPriceMode = (mode?: string): string => {
   }
 }
 
-// Format interval for display (ms to human readable)
+// Format interval for display (ms to human readable). Stays in ms for
+// sub-second values so a 0ms or 100ms config doesn't get rounded down to
+// "0s" by `.toFixed(0)`. Falsy guards check for undefined explicitly so
+// a legit 0 isn't replaced with the default.
 const formatInterval = (minMs?: number, maxMs?: number): string => {
-  const min = minMs ? (minMs / 1000).toFixed(0) : '3'
-  const max = maxMs ? (maxMs / 1000).toFixed(0) : '5'
-  return `${min}-${max}s`
+  const fmt = (v?: number, fallback = 0): string => {
+    const n = v ?? fallback
+    if (n < 1000) return `${n}ms`
+    return Number.isInteger(n / 1000) ? `${n / 1000}s` : `${(n / 1000).toFixed(1)}s`
+  }
+  // If both values fit in the same unit, only emit the unit once.
+  const minVal = minMs ?? 0
+  const maxVal = maxMs ?? 0
+  if (minVal < 1000 && maxVal < 1000) return `${minVal}-${maxVal}ms`
+  if (minVal >= 1000 && maxVal >= 1000) {
+    const min = Number.isInteger(minVal / 1000) ? `${minVal / 1000}` : (minVal / 1000).toFixed(1)
+    const max = Number.isInteger(maxVal / 1000) ? `${maxVal / 1000}` : (maxVal / 1000).toFixed(1)
+    return `${min}-${max}s`
+  }
+  return `${fmt(minMs)}-${fmt(maxMs)}`
 }
 
 // Migration function to convert old config structure to new structure
