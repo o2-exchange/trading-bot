@@ -34,7 +34,15 @@ export interface SessionSubmitTransactionRequest {
     actions: Array<{
       CreateOrder?: {
         side: 'Buy' | 'Sell'
-        order_type: 'Spot' | 'Market' | 'Limit' | 'FillOrKill' | 'PostOnly' | 'BoundedMarket'
+        // BoundedMarket is sent as a struct variant with the explicit
+        // [min_price, max_price] band the API expects. Other types are
+        // serialised as plain unit-variant strings. The internal pre-
+        // transform form may still carry 'BoundedMarket' as a string; the
+        // encoder's `toWireAction` converts it to the struct variant
+        // before the body reaches the API.
+        order_type:
+          | 'Spot' | 'Market' | 'Limit' | 'FillOrKill' | 'PostOnly' | 'BoundedMarket'
+          | { BoundedMarket: { max_price: string; min_price: string } }
         price: string
         quantity: string
         slippage_tolerance?: number

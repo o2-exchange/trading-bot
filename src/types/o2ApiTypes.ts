@@ -65,15 +65,23 @@ export interface CancelOrderAction {
 export interface CreateOrderAction {
   CreateOrder: {
     side: OrderSide;
-    order_type: OrderType;
+    /**
+     * Internal input form: a unit-variant string (e.g. `'BoundedMarket'`).
+     * The encoder converts this to either the on-chain encoded order_type
+     * or — for the `/session/actions` API body — the wire struct variant
+     * form (`{ BoundedMarket: { max_price, min_price } }`). After that
+     * conversion, action records on the wire carry the struct variant, so
+     * the type accepts both shapes.
+     */
+    order_type: OrderType | { BoundedMarket: { max_price: string; min_price: string } };
     price: string;
     quantity: string;
     /**
      * Slippage tolerance as a decimal fraction (e.g. 0.1 = 10%). Only read
      * by the encoder when `order_type === OrderType.BoundedMarket` — the
      * encoder computes a `[price × (1 - slippage), price × (1 + slippage)]`
-     * price band for the on-chain BoundedMarket action. Ignored for other
-     * order types.
+     * price band that is sent to the API as the struct variant. Ignored
+     * for other order types and stripped from the wire body.
      */
     slippage_tolerance?: number;
   };

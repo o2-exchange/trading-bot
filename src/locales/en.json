@@ -603,8 +603,8 @@
     "title": "Release Notes",
     "auto_update_note": "The app updates automatically when you refresh the page. No action needed to stay up-to-date.",
     "jun_01": {
-      "bounded_market_title": "Bounded Market Orders",
-      "bounded_market_desc": "New Bounded Market order type with configurable slippage tolerance (default 10%). Orders fill instantly within a safe price band so you never get walked deep into the book on volatile markets.",
+      "bounded_market_title": "Smarter Market Orders",
+      "bounded_market_desc": "Market orders now use a configurable slippage tolerance (default 10%) so they fill instantly within a safe price band — you never get walked deep into the book on volatile markets.",
       "realtime_title": "Real-Time Data Feeds",
       "realtime_desc": "Balances, orders, depth, and last prices now stream in via WebSocket instead of REST polling. Trades react within ~50ms of fills and the bot can run far more cycles per minute.",
       "faster_cycles_title": "Faster Trading Cycles",

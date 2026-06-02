@@ -516,8 +516,8 @@
     "title": "릴리스 노트",
     "auto_update_note": "페이지를 새로고침하면 앱이 자동으로 업데이트됩니다. 최신 상태를 유지하기 위한 별도의 조치가 필요하지 않습니다.",
     "jun_01": {
-      "bounded_market_title": "Bounded Market 주문",
-      "bounded_market_desc": "구성 가능한 슬리피지 허용 범위(기본 10%)를 갖춘 새로운 Bounded Market 주문 유형. 안전한 가격 범위 내에서 즉시 체결되므로 변동성이 큰 시장에서도 호가창 깊숙이 끌려가지 않습니다.",
+      "bounded_market_title": "더 스마트한 시장가 주문",
+      "bounded_market_desc": "시장가 주문에 구성 가능한 슬리피지 허용 범위(기본 10%)가 추가되었습니다. 안전한 가격 범위 내에서 즉시 체결되므로 변동성이 큰 시장에서도 호가창 깊숙이 끌려가지 않습니다.",
       "realtime_title": "실시간 데이터 피드",
       "realtime_desc": "잔액, 주문, 호가창, 최종 가격이 REST 폴링 대신 WebSocket으로 스트리밍됩니다. 체결 후 약 50ms 이내에 반응하며 분당 훨씬 많은 사이클을 실행할 수 있습니다.",
       "faster_cycles_title": "더 빠른 거래 사이클",

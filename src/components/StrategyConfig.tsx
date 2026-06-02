@@ -113,8 +113,8 @@ function NumberInput({ value, onChange, min, max, step = 'any', disabled, placeh
 // Tooltip descriptions for each setting
 const TOOLTIPS = {
   // Order Config
-  orderType: "Market orders execute immediately at best available price. Bounded Market is a Market order with a slippage band — the matching engine won't walk past ± your configured tolerance from the reference price. Limit orders rest on the book and wait for a match. Post Only orders are guaranteed to rest on the book as maker.",
-  slippageTolerance: "How far the matching engine can walk past your reference price before rejecting the rest of the order. Only used with Bounded Market. 10% is a permissive default; tighten (e.g. 1%) to limit slippage cost.",
+  orderType: "Market orders execute immediately within a slippage band around the reference price. Limit orders rest on the book and wait for a match. Post Only orders are guaranteed to rest on the book as maker.",
+  slippageTolerance: "How far the matching engine can walk past your reference price before rejecting the rest of the order. 10% is a permissive default; tighten (e.g. 1%) to limit slippage cost.",
   priceMode: "The reference price used to calculate your order price. Mid = average of best bid/ask. Best Bid/Ask = top of orderbook. Market = last traded price.",
   side: "Buy: Only place buy orders. Sell: Only place sell orders. Both: Place both buy and sell orders each cycle.",
   priceOffsetPercent: "Percentage offset from reference price. Buys are placed below reference (buy cheaper), sells above (sell higher). 0% = exact reference price.",
@@ -176,7 +176,7 @@ const migrateOldConfig = (oldConfig: any): StrategyConfigType => {
         name: oldConfig.name,
         orderConfig: {
           ...defaultConfig.orderConfig,
-          orderType: 'Market',
+          orderType: 'BoundedMarket',
           priceOffsetPercent: oldConfig.buyPriceAdjustmentPercent || defaultConfig.orderConfig.priceOffsetPercent,
           maxSpreadPercent: oldConfig.spreadPercent || defaultConfig.orderConfig.maxSpreadPercent,
           side: 'Both',
@@ -900,7 +900,7 @@ export default function StrategyConfig({ markets, createNewRef, importRef }: Str
                         {/* Left: Order & Position settings */}
                         <div className="config-left">
                           <span className="cfg-text">
-                            <span className="cfg-label">Type:</span> {config.config.orderConfig.orderType === 'PostOnly' ? 'PostOnly' : config.config.orderConfig.orderType === 'Spot' ? 'Limit' : config.config.orderConfig.orderType === 'BoundedMarket' ? `Bounded Market (${((config.config.orderConfig.slippageTolerance ?? 0.10) * 100).toFixed(1)}%)` : 'Market'} ·
+                            <span className="cfg-label">Type:</span> {config.config.orderConfig.orderType === 'PostOnly' ? 'PostOnly' : config.config.orderConfig.orderType === 'Spot' ? 'Limit' : config.config.orderConfig.orderType === 'BoundedMarket' ? `Market (${((config.config.orderConfig.slippageTolerance ?? 0.10) * 100).toFixed(1)}%)` : 'Market'} ·
                             <span className="cfg-label">Side:</span> {config.config.orderConfig.side || 'Both'} ·
                             <span className="cfg-label">Mode:</span> {formatPriceMode(config.config.orderConfig.priceMode)}
                           </span>
@@ -1233,8 +1233,7 @@ function StrategyConfigForm({
               value={config.orderConfig.orderType}
               onChange={(e) => updateOrderConfig({ orderType: e.target.value as any })}
             >
-              <option value="Market" disabled={config.orderManagement.onlySellAboveBuyPrice}>{t('strategy.market_order')}</option>
-              <option value="BoundedMarket" disabled={config.orderManagement.onlySellAboveBuyPrice}>{t('strategy.bounded_market_order', 'Bounded Market')}</option>
+              <option value="BoundedMarket" disabled={config.orderManagement.onlySellAboveBuyPrice}>{t('strategy.market_order')}</option>
               <option value="Spot">{t('strategy.limit_order')}</option>
               <option value="PostOnly">{t('strategy.post_only_order', 'Post Only')}</option>
             </select>
@@ -1243,7 +1242,7 @@ function StrategyConfigForm({
         {config.orderConfig.orderType === 'BoundedMarket' && (
           <div className="form-field">
             <label className="label-with-tooltip">
-              {t('strategy.slippage_tolerance', 'Slippage Tolerance %')} <Tooltip text={TOOLTIPS.slippageTolerance} position="left" />
+              {t('strategy.slippage_tolerance', 'Slipp. Tolerance %')} <Tooltip text={TOOLTIPS.slippageTolerance} position="left" />
             </label>
             <input
               type="number"

@@ -48,6 +48,49 @@ export function createCallToSign(
   return arrayify(finalBytes);
 }
 
+/**
+ * Compute the [minPrice, maxPrice] band the o2 API expects for a
+ * BoundedMarket order, given a reference price and a slippage tolerance
+ * (decimal fraction, e.g. 0.1 = 10%). Defaults to 10% when unspecified.
+ *
+ * Used both for the on-chain encoded order_type and for the wire-format
+ * JSON the session/actions API expects, so the two stay in sync.
+ */
+export function computeBoundedBand(
+  price: string,
+  slippage: number = 0.1
+): { minPrice: string; maxPrice: string } {
+  const SCALE = 1_000_000n;
+  const upScale = BigInt(Math.floor((1 + slippage) * Number(SCALE)));
+  const downScale = BigInt(Math.floor((1 - slippage) * Number(SCALE)));
+  const refBig = BigInt(bn(price.toString()).toString());
+  const minPriceBig = (refBig * downScale) / SCALE;
+  const maxPriceBig = (refBig * upScale) / SCALE;
+  return { minPrice: minPriceBig.toString(), maxPrice: maxPriceBig.toString() };
+}
+
+/**
+ * Convert a `CreateOrder` session action to the wire shape the
+ * `/session/actions` API expects. For BoundedMarket the API wants a
+ * struct variant `{ BoundedMarket: { max_price, min_price } }` rather
+ * than the string enum + sibling `slippage_tolerance` we carry in our
+ * internal types. All other order types pass through unchanged.
+ */
+function toWireAction(action: SessionAction): SessionAction {
+  if (!('CreateOrder' in action)) return action;
+  const co = action.CreateOrder;
+  if (co.order_type !== OrderType.BoundedMarket) return action;
+  const { minPrice, maxPrice } = computeBoundedBand(co.price, co.slippage_tolerance);
+  return {
+    CreateOrder: {
+      side: co.side,
+      order_type: { BoundedMarket: { max_price: maxPrice, min_price: minPrice } } as any,
+      price: co.price,
+      quantity: co.quantity,
+    },
+  } as any;
+}
+
 export async function encodeActions(
   tradeAccountIdentity: IdentityInput,
   orderBook: OrderBook,
@@ -76,7 +119,9 @@ export async function encodeActions(
   for (const action of actions) {
     if ('CreateOrder' in action) {
       invokeScopes.push(createOrderInvokeScope(action, orderBook, orderBookConfig, gasLimit));
-      newActions.push(action);
+      // Convert to wire shape — BoundedMarket gets serialised as a struct
+      // variant with explicit min/max prices, everything else is passthrough.
+      newActions.push(toWireAction(action));
     } else if ('CancelOrder' in action) {
       invokeScopes.push(orderBook.functions.cancel_order(action.CancelOrder.order_id));
       newActions.push(action);
@@ -143,20 +188,11 @@ function createOrderArgs(createOrder: CreateOrderAction, bookConfig: OrderBookCo
       order_type = { PostOnly: undefined };
       break;
     case OrderType.BoundedMarket: {
-      // Compute [low, high] band around the order price using the
-      // optional `slippage_tolerance` (decimal fraction). Defaults to 10%
-      // when unspecified to match the strategy default.
-      const slippage = createOrder.CreateOrder.slippage_tolerance ?? 0.1;
-      const SCALE = 1_000_000n;
-      const upScale = BigInt(Math.floor((1 + slippage) * Number(SCALE)));
-      const downScale = BigInt(Math.floor((1 - slippage) * Number(SCALE)));
-      const refPrice = bn(createOrder.CreateOrder.price.toString());
-      const refBig = BigInt(refPrice.toString());
-      const minPriceBig = (refBig * downScale) / SCALE;
-      const maxPriceBig = (refBig * upScale) / SCALE;
-      // Sell-side: the o2 contract expects [min, max] = [floor, ceil].
-      // Buy-side: same encoding (the runtime knows which side is taking).
-      order_type = { BoundedMarket: [bn(minPriceBig.toString()), bn(maxPriceBig.toString())] };
+      const { minPrice, maxPrice } = computeBoundedBand(
+        createOrder.CreateOrder.price,
+        createOrder.CreateOrder.slippage_tolerance
+      );
+      order_type = { BoundedMarket: [bn(minPrice), bn(maxPrice)] };
       break;
     }
     default:
