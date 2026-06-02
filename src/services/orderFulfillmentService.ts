@@ -6,7 +6,9 @@ import { orderService } from './orderService'
 import { db } from './dbService'
 import { marketService } from './marketService'
 import { balanceService } from './balanceService'
+import { sessionService } from './sessionService'
 import { wsBalanceTracker } from './wsBalanceTracker'
+import { wsOrdersTracker } from './wsOrdersTracker'
 import { scaleUpAndTruncateToInt } from '../utils/priceScaling'
 
 interface FillPrice {
@@ -480,7 +482,6 @@ class OrderFulfillmentService {
         // WS didn't push within the timeout — fall back to one REST read
         // (covers the case where the WS isn't connected for some reason).
         attempts = 1
-        balanceService.clearCache()
         balances = await balanceService.getMarketBalances(market, tradingAccountId, ownerAddress)
         baseBalanceHuman = new Decimal(balances.base.unlocked).div(10 ** market.base.decimals)
         if (baseBalanceHuman.lt(expectedMinBalance)) {
@@ -754,8 +755,18 @@ class OrderFulfillmentService {
       const currentOrder = currentOrders.find((o) => o.order_id === previousOrder.order_id)
 
       if (!currentOrder) {
-        // Order is no longer open - check if it was filled
-        const updatedOrder = await orderService.getOrder(previousOrder.order_id, marketId, normalizedAddress)
+        // Order is no longer open. Prefer the WS tracker's record (it
+        // keeps closed/cancelled orders in its map) before falling back
+        // to a single-order REST GET. The tracker is updated by every
+        // `subscribe_orders` frame, so the same fill we're reacting to
+        // is already there with up-to-date filled_quantity / status.
+        const session = await sessionService.getActiveSession(normalizedAddress, true)
+        let updatedOrder: Order | null | undefined = session
+          ? wsOrdersTracker.getOrder(session.tradeAccountId, previousOrder.order_id)
+          : undefined
+        if (!updatedOrder) {
+          updatedOrder = await orderService.getOrder(previousOrder.order_id, marketId, normalizedAddress)
+        }
         if (updatedOrder && updatedOrder.status === OrderStatus.Filled) {
           const currentFilled = new Decimal(updatedOrder.filled_quantity || '0')
           const previousFilled = new Decimal(previousOrder.filled_quantity || '0')

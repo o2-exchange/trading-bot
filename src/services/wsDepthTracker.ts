@@ -26,6 +26,7 @@ interface Subscription {
   marketId: string
   precision: number
   unsub: () => void
+  unsubState: () => void
   bids: Map<bigint, bigint>
   asks: Map<bigint, bigint>
   timestamp: number
@@ -93,10 +94,19 @@ class WsDepthTracker {
       handler,
     )
 
+    // On disconnect, invalidate the timestamp so `getDepth` falls back to
+    // REST until the server's resubscribe-snapshot lands.
+    const unsubState = o2WebSocket.onState((state) => {
+      if (state !== 'close') return
+      const cur = this.subs.get(key)
+      if (cur) cur.timestamp = 0
+    })
+
     this.subs.set(key, {
       marketId,
       precision,
       unsub,
+      unsubState,
       bids,
       asks,
       timestamp: 0,
@@ -178,6 +188,7 @@ class WsDepthTracker {
     const sub = this.subs.get(key)
     if (!sub) return
     sub.unsub()
+    sub.unsubState()
     this.subs.delete(key)
   }
 }

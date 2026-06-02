@@ -347,10 +347,15 @@ class OrderService {
     }
 
     // Prefer WS-backed open-order state. The tracker is updated by every
-    // `subscribe_orders` push, so this is real-time and free. Falls through
-    // to the REST pagination below if WS hasn't been subscribed yet.
-    const wsOpen = wsOrdersTracker.getOpenOrders(session.tradeAccountId, marketId)
-    if (wsOpen.length > 0) return wsOpen
+    // `subscribe_orders` push, so this is real-time and free. Once the
+    // subscription has received its first frame (snapshot), the tracker
+    // is authoritative — empty arrays from `getOpenOrders` mean "zero
+    // open orders", not "not loaded yet", so we serve them directly
+    // without a REST call. Only fall through to REST when WS isn't
+    // bootstrapped (e.g., disconnect window or before first frame).
+    if (wsOrdersTracker.isReady(session.tradeAccountId)) {
+      return wsOrdersTracker.getOpenOrders(session.tradeAccountId, marketId)
+    }
 
     // Paginate through all open orders (API returns max 200 per request)
     const allOrders: Order[] = []

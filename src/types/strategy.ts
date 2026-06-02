@@ -176,12 +176,13 @@ export function getDefaultStrategyConfig(marketId: string): StrategyConfig {
     },
     
     timing: {
-      // Cycle cadence — WS feeds for balance/depth/orders are real-time so
-      // the bot can fire more often than the old 3-5s pace without
-      // hammering the REST API. 500-1500ms keeps throughput high while
-      // leaving room for transaction inclusion latency.
-      cycleIntervalMinMs: 500,
-      cycleIntervalMaxMs: 1500,
+      // Cycle cadence — with WS feeds providing balance/depth/orders in
+      // real time, the per-cycle work is effectively free. The cycle
+      // floor in practice is the round-trip latency of the order-submit
+      // REST call (held by the per-market lock), so a 50-150ms target
+      // pace runs about as fast as the API can settle txs.
+      cycleIntervalMinMs: 50,
+      cycleIntervalMaxMs: 150,
     },
 
     consoleMode: 'simple', // Default to simple mode (essential messages only)
@@ -248,8 +249,8 @@ export function getPresetStrategyConfig(marketId: string, preset: StrategyPreset
           takeProfitPercent: 0
         },
         timing: {
-          cycleIntervalMinMs: 1000,
-          cycleIntervalMaxMs: 2000
+          cycleIntervalMinMs: 100,
+          cycleIntervalMaxMs: 200
         }
       }
 
@@ -275,8 +276,8 @@ export function getPresetStrategyConfig(marketId: string, preset: StrategyPreset
           orderTimeoutMinutes: 15
         },
         timing: {
-          cycleIntervalMinMs: 4000,
-          cycleIntervalMaxMs: 7000
+          cycleIntervalMinMs: 400,
+          cycleIntervalMaxMs: 700
         }
       }
 

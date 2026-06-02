@@ -88,13 +88,21 @@ class MarketService {
   }
 
   async getTicker(marketId: string): Promise<MarketTicker | null> {
-    // Prefer WS-pushed last_price when available; only the `last_price`
-    // field is used by the trading strategy executor + stop-loss, so we
-    // overlay it onto any cached REST ticker for everything else.
+    // The hot path only reads `last_price` from the ticker (see strategy
+    // executor + balance USD valuation). Once wsTradesTracker has been
+    // subscribed and seeded (either via its REST bootstrap or an organic
+    // WS trade push), it's authoritative for last_price — there's no
+    // reason to keep refetching the REST ticker on a 1s TTL just to
+    // surface fields nobody reads.
     const wsLast = wsTradesTracker.getLastPrice(marketId)
     const cached = this.tickerCache.get(marketId)
-    if (wsLast && cached) {
-      return { ...cached.data, last_price: wsLast }
+    if (wsLast) {
+      const merged: MarketTicker = cached
+        ? { ...cached.data, last_price: wsLast }
+        : { market_id: marketId, last_price: wsLast, volume_24h: '0', high_24h: '0', low_24h: '0', change_24h: '0', change_24h_percent: '0' }
+      // Keep the cache fresh so a later WS gap still serves from here.
+      this.tickerCache.set(marketId, { data: merged, timestamp: Date.now() })
+      return merged
     }
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
       return cached.data
@@ -102,8 +110,6 @@ class MarketService {
 
     try {
       const ticker = await o2ApiService.getTicker(marketId)
-      // Merge in the WS last_price if we have one fresher than REST's.
-      if (wsLast) ticker.last_price = wsLast
       this.tickerCache.set(marketId, { data: ticker, timestamp: Date.now() })
       return ticker
     } catch (error) {

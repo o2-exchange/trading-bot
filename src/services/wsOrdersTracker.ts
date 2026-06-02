@@ -9,8 +9,16 @@
  * update is dispatched to:
  *   1. The cache (open-orders map by market) — for `getOpenOrders(marketId)`
  *   2. Registered fill-listeners — for the polling loop's drop-in replacement
+ *
+ * Bootstrap + recovery: on subscribe (and again after every reconnect) we
+ * fetch the current open orders via REST, populating the cache before
+ * marking the subscription `ready`. This way callers can rely on
+ * `isReady(...)` being authoritative — `getOpenOrders` returning `[]`
+ * for a ready subscription means "you genuinely have zero open orders"
+ * and there's no need to fall back to REST.
  */
 import { o2WebSocket } from './o2WebSocket'
+import { o2ApiService } from './o2ApiService'
 import { Order, OrderSide, OrderType, OrderStatus } from '../types/order'
 
 interface WsOrderRaw {
@@ -44,12 +52,17 @@ interface FillEvent {
 type FillListener = (event: FillEvent) => void
 
 interface Subscription {
+  ownerAddress: string
   tradeAccountId: string
   unsub: () => void
+  unsubState: () => void
   /** All known orders for the trade account, keyed by order_id. */
   orders: Map<string, Order>
   /** Listeners for any order update (created / filled / cancelled). */
   listeners: Set<FillListener>
+  /** True once REST bootstrap has populated `orders` (or once we've
+   *  received any WS frame, whichever first). Reset on disconnect. */
+  ready: boolean
 }
 
 class WsOrdersTracker {
@@ -57,7 +70,7 @@ class WsOrdersTracker {
   private subs = new Map<string, Subscription>()
 
   /** Open or re-use a subscription. Returns a disposer. */
-  subscribe(tradeAccountId: string): () => void {
+  subscribe(ownerAddress: string, tradeAccountId: string): () => void {
     const key = tradeAccountId.toLowerCase()
     const existing = this.subs.get(key)
     if (existing) return () => this.release(key)
@@ -79,6 +92,10 @@ class WsOrdersTracker {
 
     const handler = (raw: { [k: string]: unknown }) => {
       const msg = raw as WsOrdersMsg
+      // Any received frame proves the subscription is alive — flip ready
+      // here as a backstop in case REST bootstrap is slow or fails.
+      const sub = this.subs.get(key)
+      if (sub) sub.ready = true
       for (const o of msg.orders ?? []) {
         if (!o.order_id) continue
         const ownerCid = o.owner?.ContractId?.toLowerCase()
@@ -101,8 +118,96 @@ class WsOrdersTracker {
       matches,
       handler,
     )
-    this.subs.set(key, { tradeAccountId, unsub, orders, listeners })
+
+    // Reset on disconnect and re-bootstrap on reopen so we never serve
+    // stale order state to callers that trust `isReady`.
+    const unsubState = o2WebSocket.onState((state) => {
+      const sub = this.subs.get(key)
+      if (!sub) return
+      if (state === 'close') {
+        sub.ready = false
+      } else if (state === 'open') {
+        void this.bootstrapFromRest(key)
+      }
+    })
+
+    this.subs.set(key, {
+      ownerAddress: ownerAddress.toLowerCase(),
+      tradeAccountId,
+      unsub,
+      unsubState,
+      orders,
+      listeners,
+      ready: false,
+    })
+
+    // Fire-and-forget initial REST bootstrap. Failures here keep ready=false
+    // so callers correctly fall back to REST per-cycle until WS frames
+    // start arriving.
+    void this.bootstrapFromRest(key)
+
     return () => this.release(key)
+  }
+
+  /** Populate the orders map from the REST `/orders?is_open=true` list.
+   *  Marks the subscription ready when done. Safe to call repeatedly. */
+  private async bootstrapFromRest(key: string): Promise<void> {
+    const sub = this.subs.get(key)
+    if (!sub) return
+    try {
+      const allOrders: Order[] = []
+      let startTimestamp: string | undefined
+      let startOrderId: string | undefined
+      const PAGE_SIZE = 200
+      const MAX_PAGES = 20
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const orders = await o2ApiService.getOrders(
+          {
+            contract: sub.tradeAccountId,
+            is_open: true,
+            direction: 'desc',
+            count: PAGE_SIZE,
+            start_timestamp: startTimestamp,
+            start_order_id: startOrderId,
+          },
+          sub.ownerAddress,
+        )
+        allOrders.push(...orders)
+        if (orders.length < PAGE_SIZE) break
+        const last = orders[orders.length - 1]
+        if (!last) break
+        startTimestamp = String(last.created_at)
+        startOrderId = last.order_id
+      }
+      // Re-fetch in case the subscription was disposed mid-bootstrap.
+      const after = this.subs.get(key)
+      if (!after) return
+      // Replace open orders with REST snapshot; preserve any closed
+      // orders we may have observed from WS frames (used by
+      // `getOrder(orderId)` for post-fill lookups).
+      for (const [id, o] of after.orders) {
+        if (o.status === OrderStatus.Open || o.status === OrderStatus.PartiallyFilled) {
+          after.orders.delete(id)
+        }
+      }
+      for (const order of allOrders) {
+        after.orders.set(order.order_id, order)
+      }
+      after.ready = true
+    } catch (err) {
+      console.warn('[wsOrdersTracker] REST bootstrap failed', err)
+      // Leave ready=false so callers fall back to REST per-cycle.
+    }
+  }
+
+  /** True once the WS subscription has received at least one frame. */
+  isReady(tradeAccountId: string): boolean {
+    return this.subs.get(tradeAccountId.toLowerCase())?.ready === true
+  }
+
+  /** Any tracked order (open, filled, or cancelled) by ID, or undefined. */
+  getOrder(tradeAccountId: string, orderId: string): Order | undefined {
+    return this.subs.get(tradeAccountId.toLowerCase())?.orders.get(orderId)
   }
 
   /** Open orders for a market. Returns [] if no subscription / no data yet. */
@@ -162,6 +267,7 @@ class WsOrdersTracker {
     const sub = this.subs.get(key)
     if (!sub) return
     sub.unsub()
+    sub.unsubState()
     this.subs.delete(key)
   }
 }

@@ -1248,7 +1248,7 @@ function StrategyConfigForm({
               type="number"
               min={0}
               max={50}
-              step={0.1}
+              step={0.01}
               value={((config.orderConfig.slippageTolerance ?? 0.10) * 100).toFixed(2)}
               onChange={(e) => {
                 const pct = parseFloat(e.target.value);
@@ -1384,16 +1384,16 @@ function StrategyConfigForm({
             <NumberInput
               value={config.timing.cycleIntervalMinMs}
               onChange={(value) => updateTiming({ cycleIntervalMinMs: value })}
-              min={100}
-              step={100}
+              min={0}
+              step={50}
               isInteger
             />
             <span className="separator">-</span>
             <NumberInput
               value={config.timing.cycleIntervalMaxMs}
               onChange={(value) => updateTiming({ cycleIntervalMaxMs: value })}
-              min={100}
-              step={100}
+              min={0}
+              step={50}
               isInteger
             />
           </div>

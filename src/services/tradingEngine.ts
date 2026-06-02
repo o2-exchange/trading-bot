@@ -296,7 +296,7 @@ class TradingEngine {
         )
         this.wsTeardownFns.push(balanceDispose)
 
-        const ordersDispose = wsOrdersTracker.subscribe(this.tradingAccountId)
+        const ordersDispose = wsOrdersTracker.subscribe(this.ownerAddress, this.tradingAccountId)
         this.wsTeardownFns.push(ordersDispose)
 
         for (const cfg of this.marketConfigs.values()) {
@@ -962,9 +962,10 @@ class TradingEngine {
         let prefetchedOpenOrders: any[] | undefined
 
         try {
-          // Clear balance cache to ensure fresh data (important for accurate order placement)
-          balanceService.clearCache()
-
+          // No cache clear: balance reads now go through wsBalanceTracker
+          // and the REST cache is only consulted as a fallback when WS is
+          // unavailable. Clearing it on every cycle just thrashed the
+          // fallback path without affecting the hot path.
           const [balances, openOrders, ticker, orderBook] = await Promise.all([
             balanceService.getMarketBalances(marketConfig.market, this.tradingAccountId!, this.ownerAddress!),
             orderService.getOpenOrders(marketConfig.market.market_id, this.ownerAddress!),

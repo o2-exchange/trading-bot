@@ -40,6 +40,8 @@ interface Subscription {
   ownerAddress: string
   tradeAccountId: string
   unsub: () => void
+  unsubState: () => void
+  bootstrapAssetIds: string[]
   /** Per-asset state, keyed by lowercased asset_id. */
   state: Map<string, BalanceSnapshot>
   /** Waiters for the next push. */
@@ -127,8 +129,47 @@ class WsBalanceTracker {
       handler,
     )
 
-    this.subs.set(key, { ownerAddress: normalizedOwner, tradeAccountId, unsub, state, waiters })
+    // Invalidate cached snapshots on disconnect so callers fall back to
+    // REST until the WS reconnects and re-seeds. On reopen, REST-seed
+    // again to recover from any push we missed during the outage.
+    const unsubState = o2WebSocket.onState((s) => {
+      const sub = this.subs.get(key)
+      if (!sub) return
+      if (s === 'close') {
+        sub.state.clear()
+      } else if (s === 'open') {
+        void this.reseed(key)
+      }
+    })
+
+    this.subs.set(key, {
+      ownerAddress: normalizedOwner,
+      tradeAccountId,
+      unsub,
+      unsubState,
+      bootstrapAssetIds: [...bootstrapAssetIds],
+      state,
+      waiters,
+    })
     return () => this.releaseSubscription(key)
+  }
+
+  /** Re-fetch the bootstrap REST snapshot for known assets after reconnect. */
+  private async reseed(key: string): Promise<void> {
+    const sub = this.subs.get(key)
+    if (!sub) return
+    await Promise.all(
+      sub.bootstrapAssetIds.map(async (assetId) => {
+        try {
+          const resp = await o2ApiService.getBalance(assetId, sub.tradeAccountId, sub.ownerAddress)
+          const after = this.subs.get(key)
+          if (!after) return
+          after.state.set(assetId.toLowerCase(), { ...resp, updatedAt: Date.now() })
+        } catch (err) {
+          console.warn('[wsBalanceTracker] reseed failed for', assetId, err)
+        }
+      }),
+    )
   }
 
   /** Latest balance for an asset, or undefined if not yet seen. */
@@ -212,6 +253,7 @@ class WsBalanceTracker {
     const sub = this.subs.get(key)
     if (!sub) return
     sub.unsub()
+    sub.unsubState()
     this.subs.delete(key)
   }
 }
