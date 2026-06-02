@@ -1223,6 +1223,16 @@ class TradingEngine {
                 tradeStatus = orderExec.isLimitOrder ? 'pending' : 'filled'
               }
 
+              // Compute valueUsd from actually-filled portion only; leave
+              // undefined when the order is still pending so we never
+              // overstate volume on partial / unfilled orders. Fill
+              // detection downstream will update this when more fills land.
+              let valueUsd: number | undefined
+              if (priceFill && filledQuantity) {
+                const priceFillHuman = new Decimal(priceFill).div(10 ** marketConfig.market.quote.decimals)
+                const filledQtyHuman = new Decimal(filledQuantity).div(10 ** marketConfig.market.base.decimals)
+                valueUsd = priceFillHuman.mul(filledQtyHuman).toNumber()
+              }
               const trade: Trade = {
                 timestamp: Date.now(),
                 marketId: marketConfig.market.market_id,
@@ -1233,6 +1243,7 @@ class TradingEngine {
                 priceFill: priceFill,
                 quantity: orderExec.quantity || '0',
                 filledQuantity: filledQuantity,
+                ...(valueUsd !== undefined ? { valueUsd } : {}),
                 success: true,
                 status: tradeStatus,
               }

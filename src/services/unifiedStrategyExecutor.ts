@@ -1040,7 +1040,9 @@ class UnifiedStrategyExecutor {
         }
       }
       
-      const isLimitOrder = forceLimitOrder || config.orderConfig.orderType !== 'Market'
+      const isLimitOrder =
+        forceLimitOrder ||
+        (config.orderConfig.orderType !== 'Market' && config.orderConfig.orderType !== 'BoundedMarket')
       const isPostOnlyOrder = !forceLimitOrder && config.orderConfig.orderType === 'PostOnly'
       // Use market precision for quantity display (max 8 decimals)
       const quantityPrecision = Math.min(market.base.decimals, 8)

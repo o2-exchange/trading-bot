@@ -6,6 +6,7 @@ import { tradeHistoryService } from './tradeHistoryService'
 import { OrderSide } from '../types/order'
 import { sessionService } from './sessionService'
 import { wsOrdersTracker } from './wsOrdersTracker'
+import Decimal from 'decimal.js'
 
 class OrderFulfillmentPolling {
   private pollingTimeouts: Map<string, number> = new Map()
@@ -88,11 +89,17 @@ class OrderFulfillmentPolling {
                   previousFilledQuantity
                 )
 
-                // Update trade record with fill info and status
+                // Update trade record with fill info, status, and the
+                // actual USD-value of the fill so trade-history volume
+                // stats reflect what truly filled (not what was submitted).
+                const priceFillHuman = new Decimal(order.price_fill || '0').div(10 ** market.quote.decimals)
+                const filledQtyHuman = new Decimal(order.filled_quantity || '0').div(10 ** market.base.decimals)
+                const valueUsd = priceFillHuman.mul(filledQtyHuman).toNumber()
                 await tradeHistoryService.updateTradeByOrderId(orderId, {
                   status: 'filled',
                   priceFill: order.price_fill,
                   filledQuantity: order.filled_quantity,
+                  valueUsd,
                 })
               }
               
