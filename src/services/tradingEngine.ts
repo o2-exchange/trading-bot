@@ -1369,8 +1369,11 @@ class TradingEngine {
                 ? new Decimal(fillData.order.price_fill).div(10 ** market.quote.decimals)
                 : new Decimal(fillData.order.price).div(10 ** market.quote.decimals)
               const side = fillData.order.side === OrderSide.Buy ? 'Buy' : 'Sell'
-              // Use strategy config order type (API doesn't return accurate order_type)
-              const fillOrderType = marketConfig.config.orderConfig.orderType === 'Market'
+              // Use strategy config order type (API doesn't return accurate order_type).
+              // Both Market and BoundedMarket render as MARKET — users don't see the
+              // bounded variant as a separate type.
+              const cfgOrderType = marketConfig.config.orderConfig.orderType
+              const fillOrderType = (cfgOrderType === 'Market' || cfgOrderType === 'BoundedMarket')
                 ? i18next.t('trading_console.order_type_market')
                 : i18next.t('trading_console.order_type_limit')
               const fillSide = fillData.order.side === OrderSide.Buy
