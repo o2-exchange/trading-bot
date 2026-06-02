@@ -6,6 +6,7 @@ import { orderService } from './orderService'
 import { db } from './dbService'
 import { marketService } from './marketService'
 import { balanceService } from './balanceService'
+import { wsBalanceTracker } from './wsBalanceTracker'
 import { scaleUpAndTruncateToInt } from '../utils/priceScaling'
 
 interface FillPrice {
@@ -448,31 +449,45 @@ class OrderFulfillmentService {
       const filledQuantityScaled = new Decimal(filledBuyOrder.filled_quantity || '0')
       const filledQuantityHuman = filledQuantityScaled.div(10 ** market.base.decimals)
 
-      // Wait for balance to reflect the fill (with 1.5s timeout)
-      // This handles the race condition where balance API hasn't updated yet after buy fill
-      // If balance doesn't settle, the retry mechanism will handle it asynchronously
+      // Wait for balance to reflect the fill. Previously this was a tight
+      // 400ms REST poll loop; with the WS balance subscription in place
+      // we now block on the next `subscribe_balances` push (typically
+      // 50-200ms after the fill confirms on-chain) instead.
       const expectedMinBalance = filledQuantityHuman
-      const maxWaitMs = 1500 // 1.5 second max (slight increase from 1.2s, retry handles edge cases)
-      const pollIntervalMs = 400 // 400ms intervals
+      const maxWaitMs = 1500
+      const expectedMinRaw = BigInt(
+        expectedMinBalance.mul(10 ** market.base.decimals).toFixed(0)
+      )
+
+      const wsArrived = await wsBalanceTracker.awaitBalanceAtLeast(
+        ownerAddress,
+        tradingAccountId,
+        market.base.asset,
+        expectedMinRaw,
+        maxWaitMs,
+      )
 
       let balances: { base: { unlocked: string }; quote: { unlocked: string } } | null = null
       let baseBalanceHuman = new Decimal(0)
-      const startTime = Date.now()
-      let attempts = 0
+      let attempts = wsArrived ? 1 : 0
 
-      while (Date.now() - startTime < maxWaitMs) {
-        attempts++
+      if (wsArrived) {
+        // WS confirmed the credit — read the fresh state synchronously.
+        balances = await balanceService.getMarketBalances(market, tradingAccountId, ownerAddress)
+        baseBalanceHuman = new Decimal(balances.base.unlocked).div(10 ** market.base.decimals)
+        console.log(`[OrderFulfillmentService] Balance settled via WS: ${baseBalanceHuman}`)
+      } else {
+        // WS didn't push within the timeout — fall back to one REST read
+        // (covers the case where the WS isn't connected for some reason).
+        attempts = 1
         balanceService.clearCache()
         balances = await balanceService.getMarketBalances(market, tradingAccountId, ownerAddress)
         baseBalanceHuman = new Decimal(balances.base.unlocked).div(10 ** market.base.decimals)
-
-        if (baseBalanceHuman.gte(expectedMinBalance)) {
-          console.log(`[OrderFulfillmentService] Balance settled: ${baseBalanceHuman} after ${attempts} attempts`)
-          break
+        if (baseBalanceHuman.lt(expectedMinBalance)) {
+          console.warn(`[OrderFulfillmentService] WS balance timeout, REST fallback shows: ${baseBalanceHuman}, expected: ${expectedMinBalance}`)
+        } else {
+          console.log(`[OrderFulfillmentService] Balance settled via REST fallback: ${baseBalanceHuman}`)
         }
-
-        console.log(`[OrderFulfillmentService] Waiting for balance settlement... current: ${baseBalanceHuman}, expected: ${expectedMinBalance} (attempt ${attempts})`)
-        await new Promise(r => setTimeout(r, pollIntervalMs))
       }
 
       if (!balances || baseBalanceHuman.lt(expectedMinBalance)) {

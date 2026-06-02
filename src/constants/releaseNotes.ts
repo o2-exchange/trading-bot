@@ -12,6 +12,28 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.9.0',
+    date: '2026-06-01',
+    features: [
+      {
+        title: 'release_notes.jun_01.bounded_market_title',
+        description: 'release_notes.jun_01.bounded_market_desc',
+      },
+      {
+        title: 'release_notes.jun_01.realtime_title',
+        description: 'release_notes.jun_01.realtime_desc',
+      },
+      {
+        title: 'release_notes.jun_01.faster_cycles_title',
+        description: 'release_notes.jun_01.faster_cycles_desc',
+      },
+      {
+        title: 'release_notes.jun_01.recovery_title',
+        description: 'release_notes.jun_01.recovery_desc',
+      },
+    ],
+  },
+  {
     version: '1.8.0',
     date: '2026-03-31',
     features: [

@@ -11,6 +11,7 @@ import { OrderSide, OrderType } from '../types/order'
 import { CreateOrderAction, CancelOrderAction } from '../types/o2ApiTypes'
 import { marketService } from './marketService'
 import { balanceService } from './balanceService'
+import { wsOrdersTracker } from './wsOrdersTracker'
 
 class OrderService {
   async placeOrder(
@@ -19,10 +20,11 @@ class OrderService {
     orderType: OrderType,
     price: string,
     quantity: string,
-    ownerAddress: string
+    ownerAddress: string,
+    slippageTolerance?: number
   ): Promise<Order> {
     try {
-      return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress)
+      return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress, slippageTolerance)
     } catch (error: any) {
       // On 400 error (InvalidSignature / nonce desync / session conflict), retry once with fresh state
       if (error?.response?.status === 400) {
@@ -51,7 +53,7 @@ class OrderService {
 
         // Retry once with fresh state
         try {
-          return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress)
+          return await this._placeOrderInternal(market, side, orderType, price, quantity, ownerAddress, slippageTolerance)
         } catch (retryError: any) {
           console.error('[OrderService] Retry after 400 also failed:', retryError?.message)
           throw retryError
@@ -67,7 +69,8 @@ class OrderService {
     orderType: OrderType,
     price: string,
     quantity: string,
-    ownerAddress: string
+    ownerAddress: string,
+    slippageTolerance?: number
   ): Promise<Order> {
     // Normalize address
     const normalizedAddress = ownerAddress.toLowerCase()
@@ -89,13 +92,15 @@ class OrderService {
     // Get TradeAccountManager - fetch latest nonce from API before placing order (matching O2 frontend)
     const tradeAccountManager = await sessionManagerService.getTradeAccountManager(normalizedAddress, true)
 
-    // Create order action
+    // Create order action. `slippage_tolerance` is only read by the encoder
+    // when `orderType === OrderType.BoundedMarket` — see o2Encoders.ts.
     const orderAction: CreateOrderAction = {
       CreateOrder: {
         side,
         order_type: orderType,
         price,
         quantity,
+        ...(slippageTolerance !== undefined ? { slippage_tolerance: slippageTolerance } : {}),
       },
     }
 
@@ -340,6 +345,12 @@ class OrderService {
     if (!session) {
       return []
     }
+
+    // Prefer WS-backed open-order state. The tracker is updated by every
+    // `subscribe_orders` push, so this is real-time and free. Falls through
+    // to the REST pagination below if WS hasn't been subscribed yet.
+    const wsOpen = wsOrdersTracker.getOpenOrders(session.tradeAccountId, marketId)
+    if (wsOpen.length > 0) return wsOpen
 
     // Paginate through all open orders (API returns max 200 per request)
     const allOrders: Order[] = []

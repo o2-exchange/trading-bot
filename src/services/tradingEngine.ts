@@ -9,6 +9,10 @@ import { tradeHistoryService } from './tradeHistoryService'
 import { orderFulfillmentService } from './orderFulfillmentService'
 import { orderFulfillmentPolling } from './orderFulfillmentPolling'
 import { balanceService } from './balanceService'
+import { wsBalanceTracker } from './wsBalanceTracker'
+import { wsDepthTracker } from './wsDepthTracker'
+import { wsOrdersTracker } from './wsOrdersTracker'
+import { wsTradesTracker } from './wsTradesTracker'
 import { tradingSessionService } from './tradingSessionService'
 import { analyticsService } from './analyticsService'
 import { db } from './dbService'
@@ -76,14 +80,17 @@ class TradingEngine {
   private configVersions: Map<string, number> = new Map() // Track config versions for change detection
   private sellTimeoutCounts: Map<string, number> = new Map() // Consecutive sell timeout cancellations per market
   private stopLossPausedMarkets: Set<string> = new Set() // Markets paused after stop loss (when auto-reset is off)
-  private consecutiveSessionErrors: number = 0 // Track consecutive "no active session" errors
-  private static readonly MAX_SESSION_ERRORS = 5 // Auto-stop after this many consecutive session failures
-  private consecutiveErrors: number = 0 // Track ALL consecutive errors for exponential backoff
+  private consecutiveErrors: number = 0 // Track ALL consecutive errors (any kind)
+  private static readonly MAX_CONSECUTIVE_ERRORS = 5 // After this many in a row, switch to long backoff regardless of error type
 
   // Round-robin scheduler: markets take turns in queue order
   private marketQueue: string[] = [] // Queue of market IDs for fair rotation
   private schedulerTimeoutId?: number // Central scheduler timeout
   private isProcessingMarket: boolean = false // Lock for central scheduler
+
+  // WebSocket subscription disposers. Populated on start(), invoked on stop()
+  // so we tear down balance/depth/orders/trades streams cleanly.
+  private wsTeardownFns: Array<() => void> = []
 
   private emitStatus(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', verbosity: 'simple' | 'debug' = 'simple'): void {
     this.onStatusCallbacks.forEach((callback) => {
@@ -226,7 +233,6 @@ class TradingEngine {
     this.isRunning = true
     this.sessionTradeCycles = 0
     this.sellTimeoutCounts.clear()
-    this.consecutiveSessionErrors = 0
     this.consecutiveErrors = 0
 
     // Clean up old processed fills from IndexedDB (entries older than 24 hours)
@@ -270,6 +276,43 @@ class TradingEngine {
     }
 
     console.log(`[TradingEngine] Starting trading loops for ${this.marketConfigs.size} market(s)...`)
+
+    // Open WS subscriptions for everything we're going to read in the hot
+    // path. One balance + orders subscription per trade account (covers all
+    // markets); one depth + trades subscription per market. After this, the
+    // existing services (balanceService / marketService / orderService) will
+    // prefer WS-pushed state over REST polling.
+    if (this.ownerAddress && this.tradingAccountId) {
+      try {
+        const allAssetIds = new Set<string>()
+        for (const cfg of this.marketConfigs.values()) {
+          allAssetIds.add(cfg.market.base.asset)
+          allAssetIds.add(cfg.market.quote.asset)
+        }
+        const balanceDispose = await wsBalanceTracker.ensureSubscribed(
+          this.ownerAddress,
+          this.tradingAccountId,
+          Array.from(allAssetIds),
+        )
+        this.wsTeardownFns.push(balanceDispose)
+
+        const ordersDispose = wsOrdersTracker.subscribe(this.tradingAccountId)
+        this.wsTeardownFns.push(ordersDispose)
+
+        for (const cfg of this.marketConfigs.values()) {
+          const depthDispose = wsDepthTracker.subscribe(cfg.market.market_id)
+          this.wsTeardownFns.push(depthDispose)
+          const tradesDispose = wsTradesTracker.subscribe(cfg.market.market_id)
+          this.wsTeardownFns.push(tradesDispose)
+        }
+        console.log(
+          `[TradingEngine] WS subscriptions opened: balances(${allAssetIds.size} assets), orders, depth+trades(${this.marketConfigs.size} markets)`,
+        )
+      } catch (err) {
+        // WS failure is non-fatal — services fall back to REST.
+        console.warn('[TradingEngine] WS subscription bootstrap failed (falling back to REST):', err)
+      }
+    }
 
     // Initialize round-robin queue with all markets
     this.marketQueue = []
@@ -493,6 +536,14 @@ class TradingEngine {
         )
       }
     }
+
+    // Tear down WS subscriptions opened in start().
+    for (const dispose of this.wsTeardownFns) {
+      try { dispose() } catch (err) {
+        console.warn('[TradingEngine] WS teardown error:', err)
+      }
+    }
+    this.wsTeardownFns = []
 
     // Stop all order fulfillment polling
     orderFulfillmentPolling.stopAll()
@@ -1274,10 +1325,11 @@ class TradingEngine {
         // Track order fills and update config with fill prices (always enabled)
         if (result.executed) {
           try {
-            // Small delay to ensure database updates from getOrder() calls are persisted
-            // This is especially important for immediately filled orders
-            await new Promise(resolve => setTimeout(resolve, 100))
-            
+            // (Removed the 100ms "flush DB writes" delay — the WS
+            // subscribe_orders push that drives `attachWsListener` already
+            // runs trackOrderFills() within ~50ms, so this synchronous wait
+            // just slowed the cycle without buying any consistency.)
+
             // Track fills for all orders that were placed
             const fillsDetected = await orderFulfillmentService.trackOrderFills(
               marketConfig.market.market_id,
@@ -1435,8 +1487,7 @@ class TradingEngine {
         // Pass the correct sessionId for this market to ensure P&L is recorded to the right session
         await this.syncPendingTradeStatuses(marketConfig.market.market_id, this.ownerAddress!, marketConfig.sessionId)
 
-        // Successful cycle — reset error counters
-        this.consecutiveSessionErrors = 0
+        // Successful cycle — reset the consecutive-error counter
         this.consecutiveErrors = 0
 
         // Set next execution time for this market
@@ -1448,46 +1499,42 @@ class TradingEngine {
         const errorPair = `${marketConfig.market.base.symbol}/${marketConfig.market.quote.symbol}`
         this.emitStatus(i18next.t('trading_console.error_in_strategy', { pair: errorPair, error: error.message }), 'error')
 
-        // Detect session loss: if we keep getting "No active session" errors,
-        // use long backoff instead of hard-stopping. The session might recover
-        // (e.g., auth flow re-creates it, or IndexedDB recovery kicks in).
-        // Hard-stopping requires manual user intervention which is worse than waiting.
-        const isSessionError = error.message?.includes('No active session') ||
+        // Treat every error (session, network, contract revert, anything)
+        // the same way: bump the consecutive-error counter, then either
+        // ramp up via exponential backoff or — once the counter exceeds
+        // MAX_CONSECUTIVE_ERRORS — fall back to a steady 30s pause. The
+        // user-facing message still flags session-specific errors so the
+        // operator knows to check their wallet connection.
+        this.consecutiveErrors++
+
+        const isSessionError =
+          error.message?.includes('No active session') ||
           error.message?.includes('Session key not found') ||
           error.message?.includes('Password not set for session')
 
-        if (isSessionError) {
-          this.consecutiveSessionErrors++
-          console.warn(`[TradingEngine] Session error #${this.consecutiveSessionErrors}/${TradingEngine.MAX_SESSION_ERRORS}`)
-
-          if (this.consecutiveSessionErrors >= TradingEngine.MAX_SESSION_ERRORS) {
-            // Instead of hard-stopping, emit a warning and use max backoff.
-            // The session may be recoverable (IndexedDB fallback, auth flow re-creation).
-            // Only a genuine session expiry (30 days) should require user action.
-            console.error(`[TradingEngine] Session appears lost after ${this.consecutiveSessionErrors} consecutive errors. Using max backoff — will keep retrying.`)
+        if (this.consecutiveErrors >= TradingEngine.MAX_CONSECUTIVE_ERRORS) {
+          console.error(
+            `[TradingEngine] ${this.consecutiveErrors} consecutive errors — using 30s pause until something succeeds.`,
+          )
+          if (isSessionError) {
             this.emitStatus(
-              'Session error: could not find active session. Retrying with extended delay... If this persists, please reconnect your wallet.',
-              'error'
+              'Session error: could not find active session. Retrying... If this persists, please reconnect your wallet.',
+              'error',
             )
-            // Use 5-minute backoff — skip the normal exponential backoff below.
-            marketConfig.nextRunAt = Date.now() + 300000
           } else {
-            // Session error but under threshold — use normal exponential backoff
-            this.consecutiveErrors++
-            const backoffDelay = Math.min(10000 * Math.pow(2, this.consecutiveErrors - 1), 300000)
-            console.warn(`[TradingEngine] Consecutive error #${this.consecutiveErrors}, backing off ${Math.round(backoffDelay / 1000)}s`)
-            marketConfig.nextRunAt = Date.now() + backoffDelay
+            this.emitStatus(
+              `Trading paused for 30s after ${this.consecutiveErrors} consecutive errors. Will keep retrying.`,
+              'warning',
+            )
           }
+          marketConfig.nextRunAt = Date.now() + 30_000
         } else {
-          // Reset counter on non-session errors (transient issues like network blips)
-          this.consecutiveSessionErrors = 0
-
-          // Exponential backoff: 10s → 20s → 40s → 80s → 160s → 300s (cap at 5 min)
-          // Prevents hammering failing endpoints during outages, which can cause
-          // rate-limiting cascades that indirectly affect session validation
-          this.consecutiveErrors++
-          const backoffDelay = Math.min(10000 * Math.pow(2, this.consecutiveErrors - 1), 300000)
-          console.warn(`[TradingEngine] Consecutive error #${this.consecutiveErrors}, backing off ${Math.round(backoffDelay / 1000)}s`)
+          // Exponential backoff under the threshold:
+          // 500ms → 1s → 2s → 4s → 8s → 16s → 30s (cap inside the helper).
+          const backoffDelay = computeBackoffDelay(this.consecutiveErrors)
+          console.warn(
+            `[TradingEngine] Consecutive error #${this.consecutiveErrors}/${TradingEngine.MAX_CONSECUTIVE_ERRORS}, backing off ${backoffDelay}ms`,
+          )
           marketConfig.nextRunAt = Date.now() + backoffDelay
         }
     } finally {
@@ -1744,6 +1791,16 @@ class TradingEngine {
 
     return cancelledOrderIds
   }
+}
+
+/**
+ * Exponential backoff for consecutive errors.
+ * Curve: 500ms → 1s → 2s → 4s → 8s → 16s → 30s (cap).
+ */
+function computeBackoffDelay(consecutiveErrors: number): number {
+  const base = 500
+  const exp = Math.min(consecutiveErrors - 1, 6) // cap exponent
+  return Math.min(base * Math.pow(2, exp), 30_000)
 }
 
 export const tradingEngine = new TradingEngine()

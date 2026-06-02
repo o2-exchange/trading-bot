@@ -602,6 +602,16 @@
   "release_notes": {
     "title": "Release Notes",
     "auto_update_note": "The app updates automatically when you refresh the page. No action needed to stay up-to-date.",
+    "jun_01": {
+      "bounded_market_title": "Bounded Market Orders",
+      "bounded_market_desc": "New Bounded Market order type with configurable slippage tolerance (default 10%). Orders fill instantly within a safe price band so you never get walked deep into the book on volatile markets.",
+      "realtime_title": "Real-Time Data Feeds",
+      "realtime_desc": "Balances, orders, depth, and last prices now stream in via WebSocket instead of REST polling. Trades react within ~50ms of fills and the bot can run far more cycles per minute.",
+      "faster_cycles_title": "Faster Trading Cycles",
+      "faster_cycles_desc": "Default cycle cadence reduced from 3-5s to 500-1500ms. Combined with real-time feeds, the bot places significantly more orders per market without hammering the API.",
+      "recovery_title": "Smarter Error Recovery",
+      "recovery_desc": "Unified consecutive-error tracking with shorter exponential backoff (500ms-30s). The bot recovers from transient blips faster and only pauses when something is genuinely broken."
+    },
     "mar_31": {
       "postonly_title": "Post Only Orders",
       "postonly_desc": "New Post Only order type guarantees your orders always rest on the book as maker. If an order would match immediately, it is rejected and retried next cycle. Perfect for traders who want maker fees only.",

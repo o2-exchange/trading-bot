@@ -24,6 +24,7 @@ export enum OrderType {
   Limit = 'Limit',
   FillOrKill = 'FillOrKill',
   PostOnly = 'PostOnly',
+  BoundedMarket = 'BoundedMarket',
 }
 
 export enum OrderSide {
@@ -67,6 +68,14 @@ export interface CreateOrderAction {
     order_type: OrderType;
     price: string;
     quantity: string;
+    /**
+     * Slippage tolerance as a decimal fraction (e.g. 0.1 = 10%). Only read
+     * by the encoder when `order_type === OrderType.BoundedMarket` — the
+     * encoder computes a `[price × (1 - slippage), price × (1 + slippage)]`
+     * price band for the on-chain BoundedMarket action. Ignored for other
+     * order types.
+     */
+    slippage_tolerance?: number;
   };
 }
 

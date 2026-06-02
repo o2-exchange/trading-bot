@@ -34,9 +34,10 @@ export interface SessionSubmitTransactionRequest {
     actions: Array<{
       CreateOrder?: {
         side: 'Buy' | 'Sell'
-        order_type: 'Spot' | 'Market' | 'Limit' | 'FillOrKill' | 'PostOnly'
+        order_type: 'Spot' | 'Market' | 'Limit' | 'FillOrKill' | 'PostOnly' | 'BoundedMarket'
         price: string
         quantity: string
+        slippage_tolerance?: number
       }
       CancelOrder?: {
         order_id: string

@@ -515,6 +515,16 @@
   "release_notes": {
     "title": "更新日誌",
     "auto_update_note": "重新整理頁面時應用程式會自動更新。無需任何操作即可保持最新版本。",
+    "jun_01": {
+      "bounded_market_title": "限價市價單（Bounded Market）",
+      "bounded_market_desc": "新增可配置滑點容忍度（預設10%）的限價市價單類型。在安全的價格區間內即時成交，避免在波動劇烈的市場中被吃單深入訂單簿。",
+      "realtime_title": "即時數據推送",
+      "realtime_desc": "餘額、訂單、深度和最新價格現在透過 WebSocket 即時推送，而非 REST 輪詢。成交後約 50ms 內反應，每分鐘可執行更多週期。",
+      "faster_cycles_title": "更快的交易週期",
+      "faster_cycles_desc": "預設週期間隔從 3-5 秒縮短至 500-1500 毫秒。結合即時數據，每個市場可下達更多訂單而不會對 API 造成壓力。",
+      "recovery_title": "更智能的錯誤恢復",
+      "recovery_desc": "統一的連續錯誤追蹤與更短的指數退避（500ms-30s）。從瞬時故障中更快恢復，僅在真正出現問題時暫停。"
+    },
     "mar_31": {
       "postonly_title": "Post Only 訂單",
       "postonly_desc": "新的 Post Only 訂單類型保證您的訂單始終作為掛單方掛在訂單簿上。如果訂單會立即成交，將被拒絕並在下一個週期重試。適合只想支付掛單方手續費的交易者。",

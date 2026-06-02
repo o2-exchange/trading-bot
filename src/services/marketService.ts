@@ -2,6 +2,8 @@ import { o2ApiService } from './o2ApiService'
 import { Market, MarketTicker, OrderBookDepth, MarketsResponse } from '../types/market'
 import { db } from './dbService'
 import { DEFAULT_PRECISION } from '../constants/o2Constants'
+import { wsDepthTracker } from './wsDepthTracker'
+import { wsTradesTracker } from './wsTradesTracker'
 
 class MarketService {
   private marketsCache: Map<string, Market> = new Map()
@@ -86,14 +88,22 @@ class MarketService {
   }
 
   async getTicker(marketId: string): Promise<MarketTicker | null> {
-    // Check cache first
+    // Prefer WS-pushed last_price when available; only the `last_price`
+    // field is used by the trading strategy executor + stop-loss, so we
+    // overlay it onto any cached REST ticker for everything else.
+    const wsLast = wsTradesTracker.getLastPrice(marketId)
     const cached = this.tickerCache.get(marketId)
+    if (wsLast && cached) {
+      return { ...cached.data, last_price: wsLast }
+    }
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
       return cached.data
     }
 
     try {
       const ticker = await o2ApiService.getTicker(marketId)
+      // Merge in the WS last_price if we have one fresher than REST's.
+      if (wsLast) ticker.last_price = wsLast
       this.tickerCache.set(marketId, { data: ticker, timestamp: Date.now() })
       return ticker
     } catch (error) {
@@ -103,7 +113,12 @@ class MarketService {
   }
 
   async getOrderBook(marketId: string, precision: number = DEFAULT_PRECISION): Promise<OrderBookDepth | null> {
-    // Check cache first
+    // Prefer WS-backed depth. Tracker returns null until the first push has
+    // landed, in which case we fall through to REST for the bootstrap read.
+    const wsDepth = wsDepthTracker.getDepth(marketId, precision)
+    if (wsDepth) return wsDepth
+
+    // Check REST cache first
     const cached = this.orderBookCache.get(marketId)
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
       return cached.data

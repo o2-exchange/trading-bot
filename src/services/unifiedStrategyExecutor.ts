@@ -781,14 +781,20 @@ class UnifiedStrategyExecutor {
         ? OrderType.PostOnly
         : config.orderConfig.orderType === 'Spot'
           ? OrderType.Spot
-          : OrderType.Market
+          : config.orderConfig.orderType === 'BoundedMarket'
+            ? OrderType.BoundedMarket
+            : OrderType.Market
+      const slippage = orderType === OrderType.BoundedMarket
+        ? (config.orderConfig.slippageTolerance ?? 0.10)
+        : undefined
       const order = await orderService.placeOrder(
         market,
         OrderSide.Buy,
         orderType,
         buyPriceScaled,
         quantityScaled,
-        ownerAddress
+        ownerAddress,
+        slippage
       )
 
       console.log('[UnifiedStrategyExecutor] Buy order placed:', order.order_id)
@@ -802,7 +808,9 @@ class UnifiedStrategyExecutor {
         }
       }
       
-      const isLimitOrder = config.orderConfig.orderType !== 'Market'
+      const isLimitOrder =
+        config.orderConfig.orderType !== 'Market' &&
+        config.orderConfig.orderType !== 'BoundedMarket'
       const isPostOnlyOrder = config.orderConfig.orderType === 'PostOnly'
       // Use market precision for quantity display (max 8 decimals)
       const quantityPrecision = Math.min(market.base.decimals, 8)
@@ -1000,14 +1008,20 @@ class UnifiedStrategyExecutor {
           ? OrderType.PostOnly
           : config.orderConfig.orderType === 'Spot'
             ? OrderType.Spot
-            : OrderType.Market
+            : config.orderConfig.orderType === 'BoundedMarket'
+              ? OrderType.BoundedMarket
+              : OrderType.Market
+      const slippage = orderType === OrderType.BoundedMarket
+        ? (config.orderConfig.slippageTolerance ?? 0.10)
+        : undefined
       const order = await orderService.placeOrder(
         market,
         OrderSide.Sell,
         orderType,
         sellPriceScaled,
         quantityScaled,
-        ownerAddress
+        ownerAddress,
+        slippage
       )
 
       console.log('[UnifiedStrategyExecutor] Sell order placed:', {

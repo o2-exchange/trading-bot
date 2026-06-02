@@ -5,15 +5,23 @@ import { Market } from './market'
 // ============================================
 export interface OrderConfig {
   // Order Type
-  orderType: 'Market' | 'Spot' | 'PostOnly'
-  
+  orderType: 'Market' | 'Spot' | 'PostOnly' | 'BoundedMarket'
+  /**
+   * Slippage tolerance (decimal fraction, e.g. 0.10 = 10%) applied when
+   * `orderType === 'BoundedMarket'`. The encoder builds a price band of
+   * `refPrice × (1 ± slippageTolerance)` so the matching engine never
+   * walks the book beyond this much. Ignored for other order types.
+   * Default: 0.10 (10%).
+   */
+  slippageTolerance?: number
+
   // Price Configuration
   priceMode: 'offsetFromMid' | 'offsetFromBestBid' | 'offsetFromBestAsk' | 'market'
   priceOffsetPercent: number // % offset from reference price (buys below, sells above)
-  
+
   // Spread Management
   maxSpreadPercent: number // Don't trade if spread exceeds this %
-  
+
   // Order Side
   side: 'Buy' | 'Sell' | 'Both' // Both = place buy and sell orders
 }
@@ -134,7 +142,8 @@ export function getDefaultStrategyConfig(marketId: string): StrategyConfig {
     name: 'Default Trading Strategy',
     
     orderConfig: {
-      orderType: 'Market',
+      orderType: 'BoundedMarket',
+      slippageTolerance: 0.10, // 10% band around reference price for BoundedMarket
       priceMode: 'offsetFromMid',
       priceOffsetPercent: 0.1, // 0.1% from mid price
       maxSpreadPercent: 2.0, // Don't trade if spread > 2%
@@ -167,8 +176,12 @@ export function getDefaultStrategyConfig(marketId: string): StrategyConfig {
     },
     
     timing: {
-      cycleIntervalMinMs: 3000, // 3 seconds minimum
-      cycleIntervalMaxMs: 5000, // 5 seconds maximum
+      // Cycle cadence — WS feeds for balance/depth/orders are real-time so
+      // the bot can fire more often than the old 3-5s pace without
+      // hammering the REST API. 500-1500ms keeps throughput high while
+      // leaving room for transaction inclusion latency.
+      cycleIntervalMinMs: 500,
+      cycleIntervalMaxMs: 1500,
     },
 
     consoleMode: 'simple', // Default to simple mode (essential messages only)
@@ -219,7 +232,8 @@ export function getPresetStrategyConfig(marketId: string, preset: StrategyPreset
         name: 'Volume Maximizing',
         orderConfig: {
           ...base.orderConfig,
-          orderType: 'Market',
+          orderType: 'BoundedMarket',
+          slippageTolerance: 0.10,
           priceMode: 'market',
           priceOffsetPercent: 0,
           maxSpreadPercent: 5.0

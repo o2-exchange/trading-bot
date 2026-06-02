@@ -515,6 +515,16 @@
   "release_notes": {
     "title": "更新日志",
     "auto_update_note": "刷新页面时应用会自动更新。无需任何操作即可保持最新版本。",
+    "jun_01": {
+      "bounded_market_title": "限价市价单（Bounded Market）",
+      "bounded_market_desc": "新增可配置滑点容忍度（默认10%）的限价市价单类型。在安全的价格区间内立即成交，避免在波动剧烈的市场中被吃单深入订单簿。",
+      "realtime_title": "实时数据推送",
+      "realtime_desc": "余额、订单、深度和最新价格现在通过 WebSocket 实时推送，而不是 REST 轮询。成交后约 50ms 内响应，每分钟可运行更多周期。",
+      "faster_cycles_title": "更快的交易周期",
+      "faster_cycles_desc": "默认周期间隔从 3-5 秒缩短到 500-1500 毫秒。结合实时数据，每个市场可下达更多订单而不会对 API 造成压力。",
+      "recovery_title": "更智能的错误恢复",
+      "recovery_desc": "统一的连续错误追踪与更短的指数退避（500ms-30s）。从瞬时故障中更快恢复，仅在真正出现问题时暂停。"
+    },
     "mar_31": {
       "postonly_title": "Post Only 订单",
       "postonly_desc": "新的 Post Only 订单类型保证您的订单始终作为挂单方挂在订单簿上。如果订单会立即成交，将被拒绝并在下一个周期重试。适合只想支付挂单方手续费的交易者。",

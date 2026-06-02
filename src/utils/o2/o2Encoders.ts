@@ -142,6 +142,23 @@ function createOrderArgs(createOrder: CreateOrderAction, bookConfig: OrderBookCo
     case OrderType.PostOnly:
       order_type = { PostOnly: undefined };
       break;
+    case OrderType.BoundedMarket: {
+      // Compute [low, high] band around the order price using the
+      // optional `slippage_tolerance` (decimal fraction). Defaults to 10%
+      // when unspecified to match the strategy default.
+      const slippage = createOrder.CreateOrder.slippage_tolerance ?? 0.1;
+      const SCALE = 1_000_000n;
+      const upScale = BigInt(Math.floor((1 + slippage) * Number(SCALE)));
+      const downScale = BigInt(Math.floor((1 - slippage) * Number(SCALE)));
+      const refPrice = bn(createOrder.CreateOrder.price.toString());
+      const refBig = BigInt(refPrice.toString());
+      const minPriceBig = (refBig * downScale) / SCALE;
+      const maxPriceBig = (refBig * upScale) / SCALE;
+      // Sell-side: the o2 contract expects [min, max] = [floor, ceil].
+      // Buy-side: same encoding (the runtime knows which side is taking).
+      order_type = { BoundedMarket: [bn(minPriceBig.toString()), bn(maxPriceBig.toString())] };
+      break;
+    }
     default:
       throw new Error(`Unsupported order type: ${createOrder.CreateOrder.order_type}`);
   }

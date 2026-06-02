@@ -5,13 +5,22 @@ import { marketService } from './marketService'
 import { tradeHistoryService } from './tradeHistoryService'
 import { OrderSide } from '../types/order'
 import { sessionService } from './sessionService'
+import { wsOrdersTracker } from './wsOrdersTracker'
 
 class OrderFulfillmentPolling {
   private pollingTimeouts: Map<string, number> = new Map()
   private pollingActive: Map<string, boolean> = new Map()
-  private readonly POLL_INTERVAL_MS = 1000 // Normal poll every 1 second (reduced from 2.5s)
-  private readonly FAST_POLL_INTERVAL_MS = 250 // Fast poll every 250ms
+  /**
+   * REST poll cadence — used as a safety net only, since `subscribe_orders`
+   * via WS now triggers an immediate `pokeFromWs()` whenever an order
+   * changes state. The REST loop catches anything WS may have missed
+   * (disconnect window, server-side dropped frame).
+   */
+  private readonly POLL_INTERVAL_MS = 5000 // 5s safety-net poll (down from 1s — WS handles the fast path)
+  private readonly FAST_POLL_INTERVAL_MS = 250 // Fast poll right after order placement
   private fastPollUntil: Map<string, number> = new Map() // Per-market fast polling end time
+  /** Per-trade-account WS listener disposers, so we can clean up on stop. */
+  private wsListenerDisposers: Map<string, () => void> = new Map()
 
   /**
    * Enable fast polling for a short period (e.g., after order placement).
@@ -34,12 +43,18 @@ class OrderFulfillmentPolling {
   }
 
   /**
-   * Start polling for order fills for a specific market
+   * Start polling for order fills for a specific market. When the WS
+   * `subscribe_orders` stream is connected, fills are detected in
+   * real-time via {@link attachWsListener}; the REST poll below is a
+   * safety net for the disconnect window.
    */
   startPolling(marketId: string, ownerAddress: string): void {
     // Stop existing polling if any
     this.stopPolling(marketId)
     this.pollingActive.set(marketId, true)
+
+    // Hook up the WS-driven fast path — see `attachWsListener` below.
+    void this.attachWsListener(marketId, ownerAddress)
 
     const poll = async () => {
       if (!this.pollingActive.get(marketId)) {
@@ -152,6 +167,13 @@ class OrderFulfillmentPolling {
       console.log(`[OrderFulfillmentPolling] Stopped polling for market ${marketId}`)
     }
     this.fastPollUntil.delete(marketId)
+    // Detach WS listener for this market (key includes both market + owner).
+    for (const [key, dispose] of this.wsListenerDisposers) {
+      if (key.startsWith(`${marketId}:`)) {
+        try { dispose() } catch { /* ignore */ }
+        this.wsListenerDisposers.delete(key)
+      }
+    }
   }
 
   /**
@@ -164,7 +186,43 @@ class OrderFulfillmentPolling {
     }
     this.pollingTimeouts.clear()
     this.fastPollUntil.clear()
+    for (const dispose of this.wsListenerDisposers.values()) {
+      try { dispose() } catch { /* ignore */ }
+    }
+    this.wsListenerDisposers.clear()
     console.log('[OrderFulfillmentPolling] Stopped all polling')
+  }
+
+  /**
+   * Subscribe to WS order updates for the user's trade account and run
+   * `trackOrderFills` immediately on every push — so fills are detected
+   * within ~50ms of confirmation instead of waiting for the next REST
+   * poll cycle.
+   */
+  private async attachWsListener(marketId: string, ownerAddress: string): Promise<void> {
+    try {
+      const normalizedAddress = ownerAddress.toLowerCase()
+      const session = await sessionService.getActiveSession(normalizedAddress, true)
+      if (!session) return
+      const key = `${marketId}:${session.tradeAccountId.toLowerCase()}`
+      // Already listening — keep the existing disposer.
+      if (this.wsListenerDisposers.has(key)) return
+      const dispose = wsOrdersTracker.addListener(session.tradeAccountId, async (event) => {
+        if (event.order.market_id !== marketId) return
+        if (!this.pollingActive.get(marketId)) return
+        if (!tradingEngine.isActive()) return
+        // Real-time fill notification: kick off the same processing the
+        // poll path runs.
+        try {
+          await orderFulfillmentService.trackOrderFills(marketId, ownerAddress)
+        } catch (err) {
+          console.warn('[OrderFulfillmentPolling] WS-poked trackOrderFills failed:', err)
+        }
+      })
+      this.wsListenerDisposers.set(key, dispose)
+    } catch (err) {
+      console.warn('[OrderFulfillmentPolling] attachWsListener failed:', err)
+    }
   }
 
   /**

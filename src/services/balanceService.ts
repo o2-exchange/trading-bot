@@ -1,6 +1,7 @@
 import { o2ApiService } from './o2ApiService'
 import { sessionService } from './sessionService'
 import { marketService } from './marketService'
+import { wsBalanceTracker } from './wsBalanceTracker'
 import { Balance, BalanceApiResponse, TradingAccountBalances } from '../types/tradingAccount'
 import { Market } from '../types/market'
 import Decimal from 'decimal.js'
@@ -18,6 +19,16 @@ class BalanceService {
     tradingAccountId: string,
     ownerAddress: string
   ): Promise<BalanceApiResponse> {
+    // Prefer WS-backed state if the tracker has it. Falls through to REST
+    // only on first call before the subscription has data, or if the WS
+    // connection is unavailable.
+    const wsSnapshot = wsBalanceTracker.getBalance(ownerAddress, tradingAccountId, assetId)
+    if (wsSnapshot) {
+      const { updatedAt: _unused, ...rest } = wsSnapshot
+      void _unused
+      return rest
+    }
+
     // Normalize address
     const normalizedAddress = ownerAddress.toLowerCase()
     const cacheKey = `${tradingAccountId}-${assetId}`

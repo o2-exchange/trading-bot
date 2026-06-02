@@ -4,6 +4,7 @@ export enum OrderType {
   Limit = 'Limit',
   FillOrKill = 'FillOrKill',
   PostOnly = 'PostOnly',
+  BoundedMarket = 'BoundedMarket',
 }
 
 export enum OrderSide {
