@@ -192,7 +192,11 @@ function createOrderArgs(createOrder: CreateOrderAction, bookConfig: OrderBookCo
         createOrder.CreateOrder.price,
         createOrder.CreateOrder.slippage_tolerance
       );
-      order_type = { BoundedMarket: [bn(minPrice), bn(maxPrice)] };
+      // Tuple order is (maxPrice, minPrice) — must match the on-chain
+       // canonical encoding (see o2 SDK encoding.ts), otherwise the
+       // server-reconstructed call bytes differ from what we signed and
+       // the API rejects with "invalid session signature".
+      order_type = { BoundedMarket: [bn(maxPrice), bn(minPrice)] };
       break;
     }
     default:
