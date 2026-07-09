@@ -722,7 +722,13 @@ class UnifiedStrategyExecutor {
     
     // Calculate order size (apply slippage buffer for market orders only)
     const isMarketOrder = config.orderConfig.orderType === 'Market'
-    const orderSize = this.calculateOrderSize(market, config.positionSizing, balances, 'buy', buyPriceHuman, ticker, isMarketOrder)
+    // BoundedMarket buys escrow quantity × max_price (= price × (1 + slippage))
+    // on the orderbook, so sizing must divide the budget by the bound price —
+    // otherwise any buy above ~1/(1+slippage) of balance is rejected on-chain.
+    const boundedSlippage = config.orderConfig.orderType === 'BoundedMarket'
+      ? (config.orderConfig.slippageTolerance ?? 0.10)
+      : 0
+    const orderSize = this.calculateOrderSize(market, config.positionSizing, balances, 'buy', buyPriceHuman, ticker, isMarketOrder, boundedSlippage)
     if (!orderSize || orderSize.quantity.eq(0)) {
       console.log('[UnifiedStrategyExecutor] Buy order skipped: insufficient balance or below minimum')
       return null
@@ -784,8 +790,9 @@ class UnifiedStrategyExecutor {
           : config.orderConfig.orderType === 'BoundedMarket'
             ? OrderType.BoundedMarket
             : OrderType.Market
+      // Reuse the exact slippage used for sizing so the escrow math holds
       const slippage = orderType === OrderType.BoundedMarket
-        ? (config.orderConfig.slippageTolerance ?? 0.10)
+        ? boundedSlippage
         : undefined
       const order = await orderService.placeOrder(
         market,
@@ -1088,7 +1095,8 @@ class UnifiedStrategyExecutor {
     side: 'buy' | 'sell',
     price: Decimal,
     ticker: any,
-    isMarketOrder: boolean = false
+    isMarketOrder: boolean = false,
+    boundedSlippage: number = 0
   ): { quantity: Decimal; valueUsd: number } | null {
     // Validate price to prevent divide by zero
     if (!isValidPrice(price)) {
@@ -1099,6 +1107,13 @@ class UnifiedStrategyExecutor {
     // For market orders, apply slippage buffer (2%) to account for price movement
     // This reduces the effective balance we use for calculations
     const MARKET_ORDER_SLIPPAGE_BUFFER = isMarketOrder ? 0.98 : 1.0
+
+    // BoundedMarket buys lock quantity × max_price of quote on the orderbook,
+    // so quantity must be derived from the bound price to pass the escrow
+    // check. Sells escrow the base quantity itself, so no adjustment there.
+    const escrowPrice = side === 'buy' && boundedSlippage > 0
+      ? price.mul(1 + boundedSlippage)
+      : price
 
     if (positionSizing.sizeMode === 'fixedUsd') {
       // Fixed USD amount
@@ -1114,18 +1129,18 @@ class UnifiedStrategyExecutor {
       }
 
       // Calculate quantity from order value
-      // quantity = orderValue / price
-      const quantity = orderValue.div(price)
+      // quantity = orderValue / escrowPrice (bound price for BoundedMarket buys)
+      const quantity = orderValue.div(escrowPrice)
 
       // Check if we have enough balance (with slippage buffer for market orders)
       if (side === 'buy') {
         const quoteBalanceHuman = new Decimal(balances.quote.unlocked).div(10 ** market.quote.decimals)
         // Apply slippage buffer - use less of available balance for market orders
         const effectiveBalance = quoteBalanceHuman.mul(MARKET_ORDER_SLIPPAGE_BUFFER)
-        const requiredQuote = quantity.mul(price)
+        const requiredQuote = quantity.mul(escrowPrice)
         if (requiredQuote.gt(effectiveBalance)) {
           // Use available balance instead (with buffer)
-          const maxQuantity = effectiveBalance.div(price)
+          const maxQuantity = effectiveBalance.div(escrowPrice)
           console.log('[UnifiedStrategyExecutor] Capping buy order to available balance:', {
             requestedValue: orderValue.toString(),
             availableBalance: quoteBalanceHuman.toString(),
@@ -1191,12 +1206,13 @@ class UnifiedStrategyExecutor {
         orderValue = effectiveBalance
       }
 
-      // Calculate quantity from order value
-      const quantity = orderValue.div(price)
+      // Calculate quantity from order value (escrow price = bound price for
+      // BoundedMarket buys, so quantity × max_price never exceeds the budget)
+      const quantity = orderValue.div(escrowPrice)
 
       return {
         quantity,
-        valueUsd: orderValue.toNumber(),
+        valueUsd: quantity.mul(price).toNumber(),
       }
     } else {
       // For sell orders, use base balance
