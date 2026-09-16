@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { WagmiProvider } from 'wagmi'
-import { Analytics } from '@vercel/analytics/react'
 import AppLayout from './components/AppLayout'
 import TradingEngineManager from './components/TradingEngineManager'
 import DashboardPage from './components/pages/DashboardPage'
@@ -75,7 +74,6 @@ function App() {
             </Routes>
           </div>
         </BrowserRouter>
-        <Analytics />
         <MobileRestrictionOverlay />
       </ToastProvider>
     </WagmiProvider>
